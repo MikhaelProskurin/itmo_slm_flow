@@ -1,0 +1,22 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    ipc: host
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    command: >
+      --model ${SELF_HOSTED_MODEL_NAME}
+      --quantization awq
+      --dtype half
+      --max-model-len 4096
+      --gpu-memory-utilization 0.7
+      --max-num-seqs 2
