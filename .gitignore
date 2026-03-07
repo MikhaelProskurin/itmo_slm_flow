@@ -3,3 +3,4 @@
 .venv
 tests
 generated
+__pycache__
