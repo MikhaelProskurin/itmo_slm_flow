@@ -4,11 +4,14 @@ Each policy implements ``BaseRoutingPolicy`` and returns ``True`` to escalate to
 the LLM, or ``False`` to keep it with the SLM.
 """
 
+import logging
 import numpy as np
 import operator as op
 
 from typing import Any
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 from core.io.models import RerankingFeatures, ContextCompressionFeatures
 
@@ -71,6 +74,8 @@ class ThresholdRoutingPolicy(BaseRoutingPolicy):
         triggered_weight = 0.0
         triggered_count = 0
 
+        logger.debug("ThresholdRoutingPolicy.decide | features: %s", feature_values)
+
         for feature_name, (operator, threshold, weight) in self.rules.items():
             if feature_name not in feature_values:
                 continue
@@ -106,6 +111,7 @@ class MLRoutingPolicy(BaseRoutingPolicy):
     def decide(self, features: FeatureVector) -> bool:
         """Return ``True`` if the classifier's LLM probability meets ``llm_threshold``."""
         feature_dump = features.model_dump()
+        logger.debug("MLRoutingPolicy.decide | features: %s", feature_dump)
         vector = np.array([[feature_dump[f] for f in feature_dump]])
         proba = self.model.predict_proba(vector)[0][1]
         return proba >= self.llm_threshold
