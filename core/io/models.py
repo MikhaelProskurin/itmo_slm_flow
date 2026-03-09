@@ -66,8 +66,7 @@ class RerankingFeatures(BaseModel):
     """Feature vector for reranking routing decision."""
 
     query_token_count: float
-    query_entity_count: float
-    query_entity_type_diversity: float
+    query_noun_chunk_count: float
     query_avg_word_frequency: float
     avg_lexical_overlap: float
     min_lexical_overlap: float
@@ -79,8 +78,7 @@ class ContextCompressionFeatures(BaseModel):
     """Feature vector for context compression routing decision."""
 
     query_token_count: float
-    query_entity_count: float
-    query_entity_type_diversity: float
+    query_noun_chunk_count: float
     query_avg_word_frequency: float
     total_context_token_count: float
     avg_chunk_token_count: float

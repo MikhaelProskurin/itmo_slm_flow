@@ -9,7 +9,7 @@ import tiktoken
 from wordfreq import word_frequency
 
 
-def query_features(query: str, nlp: spacy.Language, tokenizer: tiktoken.Encoding) -> dict[str, float | int]:
+def query_features(query: str, nlp: spacy.Language, tokenizer: tiktoken.Encoding) -> dict[str, float]:
    """Compute shared query-level features used across all feature extractors.
 
    param: query: Raw query string to analyze.
@@ -30,8 +30,7 @@ def query_features(query: str, nlp: spacy.Language, tokenizer: tiktoken.Encoding
 
    return {
       "query_token_count": len(tokenizer.encode(query)),
-      "query_entity_count": len(chunks),
-      "query_entity_type_diversity": len({e.label_ for e in chunks}),
+      "query_noun_chunk_count": float(len(chunks)),
       "query_avg_word_frequency": avg_word_freq,
    }
 

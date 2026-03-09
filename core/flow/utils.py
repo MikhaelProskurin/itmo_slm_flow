@@ -38,6 +38,26 @@ async def run_judge_llm(client: ChatOpenAI, template: str, **kwargs) -> JudgeVer
     except OutputParserException:
         return None
 
+def compute_routing_metrics(scored_by_judge: list[FlowResult], slm_name: str) -> dict[str, float]:
+    """Compute SLM routing effectiveness metrics over a set of judge-evaluated flow results.
+
+    Returns a dict with two keys:
+
+    - ``slm_success_rate``: fraction of SLM-routed calls where ``judge_score > 8.0``.
+    - ``slm_routing_ratio``: fraction of all calls that were routed to the SLM.
+
+    param: scored_by_judge: List of evaluated flow results; each must have a valid ``judge_score``.
+       type: list[FlowResult]
+    param: slm_name: Model identifier used to distinguish SLM-routed rows (matched against ``routed_model``).
+       type: str
+    """
+    slm_calls = [row for row in scored_by_judge if row.routed_model == slm_name]
+    success_slm_calls = [call for call in slm_calls if call.judge_score > 8.0]
+
+    return {
+        "slm_success_rate": len(success_slm_calls) / len(slm_calls),
+        "slm_routing_ratio": len(slm_calls) / len(scored_by_judge)
+    }
 
 def compute_stat_metrics(scored_by_judge: list[FlowResult]) -> tuple[dict[str, float]]:
     """Compute BERTScore-F1 and ROUGE-2 metrics aggregated separately by task type.

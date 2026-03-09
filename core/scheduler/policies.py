@@ -34,35 +34,52 @@ class BaseRoutingPolicy(ABC):
 
 
 class ThresholdRoutingPolicy(BaseRoutingPolicy):
-    """Routes to LLM when any feature satisfies its threshold rule.
+    """Routes to LLM when weighted sum of triggered rules exceeds total_threshold.
 
-    Rules are evaluated with OR semantics: a single satisfied condition
-    is enough to escalate to LLM, erring on the side of quality.
-
-    param: rules: Mapping of feature name to ``(operator, threshold)`` pairs.
-       Supported operators: ``"gt"``, ``"ge"``, ``"lt"``, ``"le"``, ``"eq"``.
-       type: dict[str, tuple[str, float]]
+    Args:
+        rules: Mapping of feature name to ``(operator, threshold, weight)`` tuples.
+               Supported operators: ``"gt"``, ``"ge"``, ``"lt"``, ``"le"``, ``"eq"``.
+        total_threshold: Minimum cumulative weight to route to LLM.
+        min_triggers: Minimum number of rules that must fire to route to LLM.
 
     Example::
 
-        policy = ThresholdRoutingPolicy({
-            "query_token_count":   ("lt",  500.0),
-            "avg_lexical_overlap": ("gt",  0.1),
-        })
-        use_llm = policy.decide(features)  # True if either rule is satisfied
+        policy = ThresholdRoutingPolicy(
+            rules={
+                "query_token_count":   ("gt", 50.0,  0.3),
+                "avg_lexical_overlap": ("lt", 0.15,  0.6),
+                "inter_doc_similarity":("gt", 0.85,  0.5),
+            },
+            total_threshold=1.0,
+            min_triggers=2,
+        )
     """
 
-    def __init__(self, rules: dict[str, tuple[str, float]]) -> None:
+    def __init__(
+        self,
+        rules: dict[str, tuple[str, float, float]],
+        total_threshold: float = 1.0,
+        min_triggers: int = 2,
+    ) -> None:
         self.rules = rules
+        self.total_threshold = total_threshold
+        self.min_triggers = min_triggers
 
     def decide(self, features: FeatureVector) -> bool:
-        """Return ``True`` if any rule condition is met (route to LLM)."""
+        """Return True if weighted triggers exceed total_threshold AND min_triggers is met."""
         feature_values = features.model_dump()
-        for feature_name, (operator, threshold) in self.rules.items():
+        triggered_weight = 0.0
+        triggered_count = 0
+
+        for feature_name, (operator, threshold, weight) in self.rules.items():
+            if feature_name not in feature_values:
+                continue
 
             if _OPERATORS[operator](feature_values[feature_name], threshold):
-                return True
-        return False
+                triggered_weight += weight
+                triggered_count += 1
+
+        return triggered_count >= self.min_triggers and triggered_weight >= self.total_threshold
 
 
 class MLRoutingPolicy(BaseRoutingPolicy):
