@@ -33,15 +33,11 @@ class SyntheticRowReranking(SyntheticRowBase):
     """Synthetic example for the document reranking task."""
 
     golden_answer: str = Field(description="The most relevant document")
-    sorted_order_ids: Optional[List[int]] = Field(description="Document indexes sorted by document relevance to query.", examples=[[1, 3, 5, 4]])
-
 
 class SyntheticRowCompression(SyntheticRowBase):
     """Synthetic example for the context compression task."""
 
     golden_answer: str = Field(description="Compressed context that preserves only the minimal information necessary to answer the question.")
-    optimal_compression_length: Optional[int] = Field(description="Length of the optimal compressed context.", examples=[100, 25, 342])
-
 
 class SyntheticRowDump(BaseModel):
     """Full API response wrapper persisted to disk after each generation call."""
