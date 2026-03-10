@@ -40,6 +40,7 @@ async def run_judge_llm(client: ChatOpenAI, template: str, **kwargs) -> JudgeVer
     except OutputParserException:
         return None
 
+
 def compute_routing_metrics(scored_by_judge: list[FlowResult], slm_name: str) -> dict[str, float]:
     """Compute SLM routing effectiveness metrics over a set of judge-evaluated flow results.
 
