@@ -84,8 +84,29 @@ class RagTaskOutput(BaseModel):
 class JudgeVerdict(BaseModel):
     """Structured output from the LLM-as-a-judge evaluator."""
 
-    score: float = Field(description="Quality score from 0 to 10.", examples=[1.0, 5.0, 8.0, 10.0])
-    reasoning: str = Field(description="Brief explanation of the score.")
+    feedback: str = Field(
+        description=(
+            "Detailed critical analysis covering factual precision, "
+            "completeness, and hallucination criteria. "
+            "Must be written BEFORE assigning any scores."
+        ),
+    )
+    factual_precision: int = Field(
+        description="How accurately the response conveys facts compared to the reference (1-5).",
+        examples=[1, 2, 3, 4, 5]
+    )
+    completeness: int = Field(
+        description="How well the response covers all key information from the reference (1-5).",
+        examples=[1, 2, 3, 4, 5]
+    )
+    hallucination: int = Field(
+        description="Degree to which the response is free of unsupported claims (1-5).",
+        examples=[1, 2, 3, 4, 5]
+    )
+    final_score: int = Field(
+        description="Minimum of factual_precision, completeness, and hallucination scores.",
+        examples=[1, 2, 3, 4, 5]
+    )
 
 
 class FlowResult(BaseModel):

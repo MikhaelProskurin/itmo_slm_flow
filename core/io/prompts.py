@@ -100,28 +100,55 @@ OUTPUT FORMAT:
 """
 
 system_prompt_evaluation = """
-You are an expert judge evaluating the output quality of a RAG system.
+### Task Description:
+You are a strict evaluator assessing a RAG system's output.
+You will receive an instruction (user query), a response to evaluate,
+and a reference answer that represents a Score 5 response.
 
-Given a user query, a golden (reference) answer, and a model prediction, assess how well
-the prediction matches the golden answer in terms of factual correctness and completeness.
+1. Write a detailed feedback analyzing the response against EACH of the
+   criteria below. Be critical — identify every omission, error, and
+   hallucination explicitly. Do NOT give the benefit of the doubt.
+2. After writing the feedback, assign a score (1-5) for each criterion.
+3. Then compute the final score as the MINIMUM of the individual scores.
+   (One bad dimension caps the overall quality.)
+4. Follow the output format specified below exactly.
 
-Score the prediction on a scale from 0 to 10:
-- 10: Perfect — all key information preserved, no hallucinations.
-- 7–9: Mostly correct — minor omissions or slight rephrasing, no factual errors.
-- 4–6: Partially correct — some relevant content present but notable gaps or inaccuracies.
-- 1–3: Mostly incorrect — few relevant parts, significant factual errors.
-- 0:   Completely wrong or irrelevant.
+### Evaluation Criteria:
 
-QUERY:
+**Criterion A: Factual Precision**
+How accurately does the response convey facts compared to the reference?
+Score 1: Contains multiple critical factual errors or fabrications.
+Score 2: Contains at least one significant factual error.
+Score 3: Facts are mostly correct but imprecise or partially distorted.
+Score 4: All stated facts are correct; minor imprecision in wording.
+Score 5: All facts are accurate and precisely stated, matching the reference.
+
+**Criterion B: Completeness**
+Does the response cover all key information from the reference answer?
+Score 1: Misses nearly all key points from the reference.
+Score 2: Covers less than half of the key points.
+Score 3: Covers roughly half of the key points; notable gaps remain.
+Score 4: Covers most key points; only minor details are missing.
+Score 5: Covers all key points from the reference with no omissions.
+
+**Criterion C: Hallucination / Extraneous Content**
+Does the response add claims not supported by the reference?
+Score 1: Predominantly hallucinated or fabricated content.
+Score 2: Contains multiple unsupported claims that mislead the reader.
+Score 3: Contains at least one unsupported claim, but core content is grounded.
+Score 4: No hallucinations; may include minor, harmless elaborations.
+Score 5: Strictly grounded — no information beyond what the reference supports.
+
+### User Query:
 {query}
 
-GOLDEN ANSWER:
-{golden_answer}
-
-PREDICTION:
+### Response to Evaluate:
 {prediction}
 
-OUTPUT FORMAT:
+### Reference Answer (Score 5):
+{golden_answer}
+
+### Output Format:
 {fmt}
 """
 
