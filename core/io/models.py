@@ -3,13 +3,6 @@
 Defines data shapes for synthetic generation outputs, the unified dataset row,
 NLP feature vectors, task I/O, and LLM-as-a-judge evaluation results.
 """
-
-from typing import (
-    List,
-    Dict,
-    Any,
-    Optional,
-)
 from pydantic import BaseModel, Field
 from langchain_core.messages.ai import UsageMetadata
 
@@ -19,14 +12,14 @@ class SyntheticDocumentModel(BaseModel):
 
     idx: int = Field(description="Id of the generated document.", examples=[1, 2, 3])
     content: str = Field(description="Document text.")
-    reasoning_trace: Optional[str] = Field(description="The step-by-step reasoning process that led to this answer.")
+    reasoning_trace: str | None = Field(description="The step-by-step reasoning process that led to this answer.")
 
 
 class SyntheticRowBase(BaseModel):
     """Base fields shared by all synthetic task examples."""
 
     query: str = Field(description="The user query.")
-    documents: List[SyntheticDocumentModel] = Field(description="List of documents with id and full text.")
+    documents: list[SyntheticDocumentModel] = Field(description="List of documents with id and full text.")
 
 
 class SyntheticRowReranking(SyntheticRowBase):
@@ -34,17 +27,18 @@ class SyntheticRowReranking(SyntheticRowBase):
 
     golden_answer: str = Field(description="The most relevant document")
 
+
 class SyntheticRowCompression(SyntheticRowBase):
     """Synthetic example for the context compression task."""
 
     golden_answer: str = Field(description="Compressed context that preserves only the minimal information necessary to answer the question.")
 
+
 class SyntheticRowDump(BaseModel):
     """Full API response wrapper persisted to disk after each generation call."""
 
-    usage_metadata: Optional[UsageMetadata]
-    response_metadata: Optional[Dict[str, Any]]
-    task_row_model: SyntheticRowCompression | SyntheticRowReranking | Any
+    usage_metadata: UsageMetadata | None
+    task_row_model: SyntheticRowCompression | SyntheticRowReranking
 
 
 class SlmFlowDatasetRow(BaseModel):
@@ -53,9 +47,8 @@ class SlmFlowDatasetRow(BaseModel):
     task: str
     domain: str
     difficulty: str
-    usage_metadata: Optional[UsageMetadata | Dict[str, Any]]
-    response_metadata: Optional[Dict[str, Any]]
-    task_row_model: SyntheticRowCompression | SyntheticRowReranking | Any
+    usage_metadata: UsageMetadata | None
+    task_row_model: SyntheticRowCompression | SyntheticRowReranking
 
 
 class RerankingFeatures(BaseModel):
@@ -85,7 +78,7 @@ class ContextCompressionFeatures(BaseModel):
 class RagTaskOutput(BaseModel):
     """Structured output returned by a RAG task execution."""
 
-    answer: Optional[str] = Field(description="The compressed context or the most relevant document.")
+    answer: str | None = Field(description="The compressed context or the most relevant document.")
 
 
 class JudgeVerdict(BaseModel):
@@ -103,6 +96,6 @@ class FlowResult(BaseModel):
     query: str
     golden_answer: str
     prediction: str
-    features: Optional[RerankingFeatures | ContextCompressionFeatures]
-    judge_score: Optional[float]
-    judge_reasoning: Optional[str]
+    features: RerankingFeatures | ContextCompressionFeatures | None
+    judge_score: float | None
+    judge_reasoning: str | None

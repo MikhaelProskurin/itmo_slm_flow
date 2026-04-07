@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 
 from pandas import DataFrame
 
-from core.io.models import SlmFlowDatasetRow
+from core.io.models import SlmFlowDatasetRow, SyntheticRowDump
 
 
 class SlmFlowBaseDataset(ABC):
@@ -87,15 +87,12 @@ class SlmFlowSyntheticDataset(SlmFlowBaseDataset):
         return DataFrame([row.model_dump() for row in self.rows])
 
     @classmethod
-    def json_to_pydantic(cls, filename: str | Path, v1_compatible: bool) -> SlmFlowDatasetRow:
+    def json_to_pydantic(cls, filename: str | Path) -> SlmFlowDatasetRow:
         """Parse a single JSON file into a ``SlmFlowDatasetRow``, inferring metadata from the path.
 
         param: filename: Absolute or relative path to the JSON file; must follow the
            ``root/task/domain/difficulty/uuid.json`` directory convention.
            type: str | Path
-        param: v1_compatible: When ``True``, uses the full JSON object as ``task_row_model``;
-           otherwise reads the nested ``task_row_model`` key.
-           type: bool
         """
         _, root, task, domain, difficulty, uuid = filename.parts
         json_location = "/".join(filename.parts)
@@ -109,5 +106,5 @@ class SlmFlowSyntheticDataset(SlmFlowBaseDataset):
                 difficulty=difficulty,
                 usage_metadata=content.get("usage_metadata"),
                 response_metadata=content.get("response_metadata"),
-                task_row_model=content if v1_compatible else content.get("task_row_model")
+                task_row_model=content.get("task_row_model")
             )

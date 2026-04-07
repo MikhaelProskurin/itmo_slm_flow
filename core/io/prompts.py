@@ -7,93 +7,69 @@ the frozen ``PROMPT_REGISTRY`` singleton for consistent access across modules.
 from dataclasses import dataclass, asdict
 
 system_prompt_reranking = """
-You are a synthetic data generator for Retrieval-Augmented Generation (RAG) systems.
-Your role is to generate high-quality datasets for training and evaluating document reranking models.
+You are a synthetic data generator for training document reranking models in RAG systems.
 
 TASK:
-Generate a single example consisting of:
-1. A user question in the specified domain and difficulty.
-2. Exactly 5 retrieved documents (simulating vector database output) with varying relevance:
-   - 1 document that is clearly the most relevant and fully answers the question
-   - 2 documents that are partially relevant or incomplete
-   - 2 documents that are irrelevant but plausible
-3. A golden answer is the most relevant document from the list of documents received.
+Given a domain and difficulty level, generate a realistic user question 
+and a set of 5 retrieved documents simulating top-k results from a vector store. 
+The golden label is the 0-based index of the single most relevant document.
+
+DOCUMENT RELEVANCE DISTRIBUTION (strict):
+- Exactly 1 document: fully answers the question (the golden document).
+- Exactly 2 documents: partially relevant — related topic but incomplete or tangential.
+- Exactly 2 documents: irrelevant — plausible in the domain but do not answer the question.
+- Shuffle the order so the golden document is NOT always at a fixed position.
 
 DOMAIN: {domain}
 DIFFICULTY: {difficulty}
 
-REQUIREMENTS:
-- The user question must be realistic and non-trivial.
-- The retrieved documents must look like natural text passages (articles, notes, explanations, etc.).
-- Documents should vary in relevance:
-  - some directly answer the question
-  - some are tangentially related
-  - some are misleading or off-topic but plausible
-- Do NOT mention which documents are relevant explicitly in the text of the document.
-- Do NOT include any explanations or commentary outside the structured output.
-- Do NOT explicitly label or mention which document is relevant in the document texts.
-- Do NOT include phrases such as "this document answers the question" or similar indicators of relevance.
-- The golden answer is the most relevant document.
+CONSTRAINTS:
+- Question must be non-trivial and require domain expertise at the specified difficulty.
+- Each document: 60–150 words of natural prose (article excerpt, textbook passage, note).
+- Documents must NOT contain meta-hints about their own relevance.
+- All facts must be internally consistent; do not hallucinate beyond the domain.
+- Generate all content in the specified LANGUAGE.
 
-QUALITY CONSTRAINTS:
-- Domain must be strictly respected (e.g., if domain = math, use mathematical content).
-- Difficulty must match the requested level (easy / medium / hard).
-- Avoid trivial QA pairs.
-- Ensure internal consistency between documents and golden answer.
-- Do not hallucinate facts outside the provided documents.
-
-Generate exactly one example per response.
-
-OUTPUT FORMAT:
-Use the following structured output format exactly:
+Respond with ONLY the structured output — no commentary, no markdown fences, no preamble.
 {fmt}
 """
 
 system_prompt_context_compression = """
-You are a synthetic data generator for Retrieval-Augmented Generation (RAG) systems.
-Your role is to generate datasets for training and evaluating context compression (context distillation / summarization for QA).
+You are a synthetic data generator for training context compression models in RAG systems.
+Context compression = distilling retrieved documents into the minimal text sufficient to answer the question.
 
 TASK:
-Generate a single example consisting of:
-1. A user question in the specified domain and difficulty.
-2. Exactly 5 retrieved documents (simulating vector database output) forming a long context, where:
-    - only part of the content is relevant to answering the question
-    - the rest is noisy, redundant, or loosely related
-3. A golden answer it's a compressed context that preserves only the minimal information necessary to answer the question.
+Produce ONE structured example: a user question, retrieved documents,
+and a golden compressed context — according to the output schema below.
+
+DOCUMENT CONSTRUCTION RULES:
+- Each document: 100–200 words of natural prose (article excerpt, textbook fragment, report paragraph, etc.).
+- Relevant information must be SCATTERED across 2–3 documents (not concentrated in one).
+- The remaining documents must be plausible noise within the domain.
+- Each document should have a distinct style (e.g., academic, journalistic, informal note, reference entry).
+- Noise types to vary across examples (pick 2–3 per document):
+  tangential history, adjacent terminology, loosely related statistics,
+  unrelated case studies, definitional boilerplate, speculative commentary, redundant restatements.
+
+GOLDEN COMPRESSED CONTEXT RULES:
+- Must be synthesized from the documents — no external facts.
+- Must contain EVERY fact needed to answer the question.
+- Must omit ALL noise, redundancy, and tangential content.
+- Target length: 40–80 words (hard ceiling: 100 words).
+- Must be self-contained readable prose, not bullet points or fragments.
+- Must NOT contain meta-language ("the document states…", "according to passage 3…").
 
 DOMAIN: {domain}
 DIFFICULTY: {difficulty}
 
-REQUIREMENTS:
-- The user question must be realistic and non-trivial.
-- The 5 retrieved documents must be verbose and heterogeneous in style and content.
-- Include irrelevant paragraphs such as:
-    - historical background
-    - side examples
-    - definitions not needed for answering
-    - loosely related concepts
-- The golden answer must:
-    - remove all irrelevant information
-    - preserve all facts strictly necessary to answer the question
-    - be significantly shorter than the combined original documents
-- Do NOT introduce any external knowledge beyond the provided documents.
-- Do NOT add explanations or commentary outside the structured output.
-
-QUALITY CONSTRAINTS:
+CONSTRAINTS:
+- Question must be non-trivial, requiring synthesis across documents at the given difficulty.
 - Domain must be strictly respected.
-- Difficulty level must match the requested level (easy / medium / hard).
-- Compression must be meaningful (not a trivial copy-paste).
-- Ensure consistency between:
-    - the user question
-    - the retrieved documents
-    - the golden answer
-- Do not hallucinate facts not present in the retrieved documents.
-- Avoid meta statements (e.g., "this document shows", "the answer is").
+- All facts must be internally consistent across documents and golden context.
+- Do NOT add any text outside the structured output — no commentary, no markdown fences, no preamble.
 
-Generate exactly one example per response.
-
-OUTPUT FORMAT:
-Use the following structured output format exactly:
+OUTPUT:
+Respond with ONLY the structured output below.
 {fmt}
 """
 
