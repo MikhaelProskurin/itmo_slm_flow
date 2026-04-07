@@ -34,6 +34,7 @@ Respond with ONLY the structured output — no commentary, no markdown fences, n
 {fmt}
 """
 
+
 system_prompt_context_compression = """
 You are a synthetic data generator for training context compression models in RAG systems.
 Context compression = distilling retrieved documents into the minimal text sufficient to answer the question.
@@ -73,6 +74,7 @@ Respond with ONLY the structured output below.
 {fmt}
 """
 
+
 reranking_inference_template = """
 Rerank the provided documents by relevance to the query. Return the most relevant document from given.
 
@@ -86,6 +88,7 @@ OUTPUT FORMAT:
 {fmt}
 """
 
+
 context_compression_inference_template = """
 Compress the provided documents into a minimal context that preserves only the information necessary to answer the query. Remove all irrelevant, redundant, or off-topic content.
 
@@ -98,6 +101,7 @@ DOCUMENTS:
 OUTPUT FORMAT:
 {fmt}
 """
+
 
 system_prompt_evaluation = """
 ### Task Description:
