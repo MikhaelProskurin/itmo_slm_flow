@@ -18,19 +18,6 @@ from core.io.models import SlmFlowDatasetRow
 
 
 class BaseTask(ABC):
-    """Abstract base class defining the task interface consumed by ``InferenceFlow``.
-
-    param: task_name: Identifier matching the task key in scheduler/parser/template dicts.
-       type: str
-    param: query: User query extracted from the dataset row.
-       type: str
-    param: documents: List of retrieved documents (Pydantic models or raw dicts).
-       type: list[BaseModel | str]
-    param: parser: Pydantic parser used to validate the LLM response format.
-       type: PydanticOutputParser
-    param: prompt_template: Inference prompt template with ``{query}``, ``{documents}``, ``{fmt}`` placeholders.
-       type: str
-    """
 
     def __init__(
         self,
@@ -69,17 +56,6 @@ class RagTask(BaseTask):
 
     @classmethod
     def create(cls, row: SlmFlowDatasetRow, parser: PydanticOutputParser, prompt_template: str, task_name: str) -> RagTask:
-        """Build a ``RagTask`` by extracting ``query`` and ``documents`` from ``row``.
-
-        param: row: Loaded dataset row supplying query and documents.
-           type: SlmFlowDatasetRow
-        param: parser: Output parser forwarded to the task instance.
-           type: PydanticOutputParser
-        param: prompt_template: Inference prompt template forwarded to the task instance.
-           type: str
-        param: task_name: Task identifier forwarded to the task instance.
-           type: str
-        """
         task_row = row.task_row_model
         if isinstance(task_row, BaseModel):
             query = task_row.query
@@ -90,14 +66,6 @@ class RagTask(BaseTask):
         return cls(task_name, query, documents, parser, prompt_template)
 
     def run(self, client: ChatOpenAI) -> str:
-        """Format the prompt, call ``client``, and return the raw response content.
-
-        ``OutputParserException`` is silently suppressed — the raw string is always returned
-        so the flow can still record and evaluate partial or malformed outputs.
-
-        param: client: LLM client (SLM or LLM) selected by the scheduler.
-            type: ChatOpenAI
-        """
         kwargs = {
             "query": self.query,
             "documents": self.documents,

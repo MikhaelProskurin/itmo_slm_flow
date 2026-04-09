@@ -10,8 +10,8 @@ from typing import Literal
 from langchain_openai import ChatOpenAI
 
 from core.io.models import RerankingFeatures, ContextCompressionFeatures
-from core.scheduler.features import BaseFeatureExtractor
-from core.scheduler.policies import BaseRoutingPolicy
+from core.router.features import BaseFeatureExtractor
+from core.router.policies import BaseRoutingPolicy
 from core.tasks.base import RagTask
 
 
@@ -21,20 +21,6 @@ TaskInput = RagTask
 
 
 class SlmFlowScheduler:
-    """Routes each task to either the SLM or LLM based on extracted features.
-
-    param: policies: Map of task name to its routing policy; used only in ``"dynamic"`` mode.
-       type: dict[str, BaseRoutingPolicy]
-    param: extractors: Map of task name to its feature extractor.
-       type: dict[str, BaseFeatureExtractor]
-    param: llm: Large language model client, selected when policy returns ``True``.
-       type: ChatOpenAI
-    param: slm: Small language model client, selected when policy returns ``False``.
-       type: ChatOpenAI
-    param: mode: Operating mode — ``"dynamic"`` uses the policy; ``"llm_only"`` / ``"slm_only"``
-       always route to a fixed model regardless of features.
-       type: Literal["llm_only", "slm_only", "dynamic"]
-    """
 
     def __init__(
         self,
@@ -50,15 +36,9 @@ class SlmFlowScheduler:
         self.slm = slm
         self.mode = mode
 
+
     def route(self, task: TaskInput) -> tuple[ChatOpenAI, RerankingFeatures | ContextCompressionFeatures]:
-        """Return the selected model client and the extracted feature vector for ``task``.
 
-        Features are always extracted regardless of the operating mode so they can
-        be recorded in ``FlowResult`` for later analysis.
-
-        param: task: Incoming task whose ``task_name`` is used to look up extractor and policy.
-           type: RagTask
-        """
         features = self.extractors[task.task_name].extract(task)
 
         match self.mode:

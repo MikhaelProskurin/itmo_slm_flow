@@ -16,7 +16,7 @@ from pandas import DataFrame
 from core.tasks.base import BaseTask
 from core.data.datasets import SlmFlowBaseDataset
 from core.io.models import JudgeVerdict, FlowResult
-from core.scheduler.base import SlmFlowScheduler
+from core.router.base import SlmFlowScheduler
 from core.flow.utils import (
     run_judge_llm,
     timeit
@@ -57,18 +57,7 @@ class InferenceFlow:
             parsers: dict[str, PydanticOutputParser],
             templates: dict[str, str]
         ) -> list[str]:
-        """Run all dataset rows through the scheduler and return raw model predictions.
 
-        Populates internal buffers (``_to_eval``, ``_routings``) used by
-        ``evaluate_by_judge`` for subsequent scoring.
-
-        param: tasks: Map of task name to task class; used to construct a task per row.
-           type: dict[str, type[BaseTask]]
-        param: parsers: Map of task name to output parser forwarded to each task.
-           type: dict[str, PydanticOutputParser]
-        param: templates: Map of task name to inference prompt template.
-           type: dict[str, str]
-        """
         n_total = len(self.dataset)
         logger.info(f"Starting execute: {n_total} rows, mode={self.scheduler.mode}")
 
@@ -98,14 +87,7 @@ class InferenceFlow:
         return predictions
 
     async def evaluate_by_judge(self, client: ChatOpenAI, prompt_template: str) -> list[FlowResult]:
-        """Score all predictions concurrently using an LLM judge and return structured results.
 
-        param: client: LLM client used for judge evaluation calls.
-           type: ChatOpenAI
-        param: prompt_template: Evaluation prompt template with ``{query}``, ``{golden_answer}``,
-           ``{prediction}``, and ``{fmt}`` placeholders.
-           type: str
-        """
         n_total = len(self._to_eval)
         logger.info(f"Starting judge evaluation: {n_total} records")
 

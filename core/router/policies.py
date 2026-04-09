@@ -115,3 +115,13 @@ class MLRoutingPolicy(BaseRoutingPolicy):
         vector = np.array([[feature_dump[f] for f in feature_dump]])
         proba = self.model.predict_proba(vector)[0][1]
         return proba >= self.llm_threshold
+
+
+class SLMRoutingPolicy(BaseRoutingPolicy):
+
+    def __init__(self) -> None:
+        ...
+    
+    def decide(self, features: FeatureVector) -> bool:
+        feature_dump = features.model_dump()
+        ...

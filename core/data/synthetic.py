@@ -5,58 +5,62 @@ difficulty combinations to produce structured training examples via
 ``langchain``-based prompt chains with automatic parsing and fallback logic.
 """
 
-import os
 import uuid
 import asyncio
 import aiofiles
 import logging
 
 from typing import Sequence
+from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
 
-from core.io.models import SyntheticRowDump
-
+from core.messaging import LangchainMessageBuilder
 
 logger = logging.getLogger(__name__)
 
+TCombo = dict[tuple[str, str, str], int]
 
-class MessagesBuilder:
-    
-    def __init__(self, templates: dict[str, str], parsers: dict[str, PydanticOutputParser]) -> None:
-        self.templates = templates
-        self.parsers = parsers
 
-    @classmethod
-    def from_sequence(cls, *args: tuple[str, str, BaseModel]) -> "MessagesBuilder":
+class RAGDocument(BaseModel):
+    """A single document produced during synthetic data generation."""
 
-        templates = {}
-        parsers = {}
-        for sequence in args:
-            key, template, output_model = sequence
-            templates[key] = template
-            parsers[key] = PydanticOutputParser(pydantic_object=output_model)
+    idx: int = Field(description="Id of the generated document.", examples=[1, 2, 3])
+    content: str = Field(description="Document text.")
+    reasoning_trace: str | None = Field(description="The step-by-step reasoning process that led to this answer.")
 
-        return cls(templates, parsers)
-    
-    def create_message(self, task: str, domain: str, difficulty: str) -> BaseMessage:
-        template, parser = self.templates[task], self.parsers[task]
-        fmt = parser.get_format_instructions()
-        return SystemMessage(
-            template.format(
-            domain=domain, 
-            difficulty=difficulty, 
-            fmt=fmt
-            )
-        )
 
-    def get_parser(self, key: str) -> PydanticOutputParser:
-        return self.parsers[key]
-        
+class RAGSampleBase(BaseModel):
+    """Base fields shared by all synthetic task examples."""
+
+    query: str = Field(description="The user query.")
+    documents: list[RAGDocument] = Field(description="List of documents with id and full text.")
+
+
+class RerankingSample(RAGSampleBase):
+    """Synthetic example for the document reranking task."""
+
+    golden_answer: str = Field(description="The most relevant document")
+
+
+class CompressionSample(RAGSampleBase):
+    """Synthetic example for the context compression task."""
+
+    golden_answer: str = Field(description="Compressed context that preserves only the minimal information necessary to answer the question.")
+
+
+class PersistentSample(BaseModel):
+    """Full API response wrapper persisted to disk after each generation call."""
+
+    usage_metadata: UsageMetadata | None
+    sample: CompressionSample | RerankingSample
+
 
 class DatasetDeclaration(BaseModel):
     
@@ -69,11 +73,17 @@ class DatasetDeclaration(BaseModel):
     def n_samples(self) -> int:
         """Total number of examples that will be generated across all combinations."""
         return len(self.tasks) * len(self.domains) * len(self.difficulties) * self.batch_size
-  
 
-class AsyncDeclarativeDatasetGenerator:
+
+class RAGDatasetAsyncGenerator:
     
-    def __init__(self, client: ChatOpenAI, declaration: DatasetDeclaration, messages_builder: MessagesBuilder, rate_limit: int = 15) -> None:
+    def __init__(
+        self, 
+        client: ChatOpenAI, 
+        declaration: DatasetDeclaration,
+        messages_builder: LangchainMessageBuilder, 
+        rate_limit: int = 15
+    ) -> None:
         self.client = client
         self.declaration = declaration
         self.messages_builder = messages_builder
@@ -86,7 +96,14 @@ class AsyncDeclarativeDatasetGenerator:
             for domain in self.declaration.domains
             for difficulty in self.declaration.difficulties
         }
-        messages = [self.messages_builder.create_message(*c) for c in combos]
+        messages = [
+            self.messages_builder.create_message(
+                key, 
+                domain=domain,
+                difficulty=difficulty
+            ) 
+            for key, domain, difficulty in combos    
+        ]
         output_parsers = [self.messages_builder.get_parser(key) for key, _, _ in combos]
 
         results = []
@@ -103,7 +120,7 @@ class AsyncDeclarativeDatasetGenerator:
             for key, batch in zip(future_samples, batches):
                 combos[key] += len(batch)
                 
-                path = output_dir + "/" + "/".join(key)
+                path = Path(output_dir) / Path(*key)
                 persistence_coroutines = [self.apersist_sample(sample, path) for sample in batch]
                 await asyncio.gather(*persistence_coroutines)
             
@@ -112,7 +129,7 @@ class AsyncDeclarativeDatasetGenerator:
         return results
 
 
-    async def agenerate_batch(self, input_message: BaseMessage, output_parser: PydanticOutputParser, batch_size: int) -> list[SyntheticRowDump]:
+    async def agenerate_batch(self, input_message: BaseMessage, output_parser: PydanticOutputParser, batch_size: int) -> list[PersistentSample]:
         
         coroutines = [self.client.ainvoke([input_message]) for m in range(batch_size)]    
         responses_batch: list[AIMessage] = await asyncio.gather(*coroutines)
@@ -122,7 +139,7 @@ class AsyncDeclarativeDatasetGenerator:
             
             try:
                 parsed, meta = output_parser.parse(response.content), response.usage_metadata
-                successfully_parsed.append(SyntheticRowDump(usage_metadata=meta, task_row_model=parsed))
+                successfully_parsed.append(PersistentSample(usage_metadata=meta, task_row_model=parsed))
 
             except OutputParserException as ex:
                 logger.info("Error while parsing the LLM response. %s", ex)
@@ -131,17 +148,17 @@ class AsyncDeclarativeDatasetGenerator:
         return successfully_parsed
 
     
-    async def apersist_sample(self, sample: SyntheticRowDump, path: str) -> None:
+    async def apersist_sample(self, sample: PersistentSample, path: Path) -> None:
 
-        if not os.path.exists(path):
-            os.makedirs(path, mode=777)
-        
-        uuid_path = path + "/" + uuid.uuid4().hex + ".json"
+        path.mkdir(parents=True, exist_ok=True)
+
+        uuid_path = path / f"{uuid.uuid4().hex}.json"
+
         async with aiofiles.open(uuid_path, mode="w", encoding="utf-8") as file:
             await file.write(sample.model_dump_json())
     
 
-    def get_remaining_samples(self, combos: dict[tuple, int]) -> dict[tuple, int]:
+    def get_remaining_samples(self, combos: TCombo) -> TCombo:
 
         remaining = {}
         for key, samples_ready in combos.items():
