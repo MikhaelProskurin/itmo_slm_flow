@@ -12,7 +12,7 @@ from wordfreq import word_frequency
 
 from pydantic import BaseModel, field_validator
 
-from core.tasks.base import RagTask
+from core.tasks import RAGTask
 
 
 class RAGFeatureVectorBase(BaseModel):
@@ -46,9 +46,9 @@ class RAGFeatureExtractor:
 
     RELEVANCE_THRESHOLD = 0.3
     
-    def __init__(self, nlp: str, tokenizer: str) -> None:
-        self.nlp = spacy.load(nlp)
-        self.tokenizer = tiktoken.encoding_for_model(tokenizer)
+    def __init__(self, nlp: spacy.Language, tokenizer: tiktoken.Encoding) -> None:
+        self.nlp = nlp
+        self.tokenizer = tokenizer
 
     @property
     def relevance_threshold(self) -> float:
@@ -58,11 +58,31 @@ class RAGFeatureExtractor:
     def relevance_threshold(self, value: float) -> None:
         if 0 <= value <= 1:
             self.RELEVANCE_THRESHOLD = value
-        else:
-            raise ValueError("Invalid relevance_thrshold value!")
+            return 
+        raise ValueError("Invalid relevance_thrshold value!")
+
+    @classmethod
+    def from_model_names(cls, nlp: str, tokenizer: str) -> "RAGFeatureExtractor":
+        """Construct by loading spaCy and tiktoken models by name."""
+        return cls(
+            nlp=spacy.load(nlp),
+            tokenizer=tiktoken.encoding_for_model(tokenizer)
+        )
     
-    def extract_from_task(self, task) -> TFeatureVector:
-        ...
+    def extract_from_task(self, task: RAGTask) -> TFeatureVector:
+        tname, query, documents = (
+            task.name,
+            task.query, 
+            task.documents
+        )
+        match tname:
+            case "reranking":
+                fvector = self.compute_reranking_feature_vector(query, documents)
+            case "context_compression":
+                fvector = self.compute_compression_feature_vector(query, documents)
+            case _:
+                raise ValueError("Unsupproted feature extraction for task: %s", tname)
+        return fvector
     
     
     def compute_reranking_feature_vector(self, query: str, documents: list[str]) -> RerankingVector:

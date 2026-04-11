@@ -6,16 +6,23 @@ recursively loads JSON files from the dataset directory into typed Pydantic rows
 
 import json
 import random
+
 from typing import Any
-
-from abc import ABC, abstractmethod
-
 from pathlib import Path
-from pydantic import BaseModel
 
 from pandas import DataFrame
+from pydantic import BaseModel
 
-TContentMap = dict[str, Any]
+from abc import ABC, abstractmethod
+from core.data import RAGDocument
+
+TPythonMap = dict[str, Any]
+
+class StandardSample(BaseModel):
+    query: str
+    documents: list[RAGDocument]
+    golden_answer: str
+
 
 class DatasetRecord(BaseModel):
     """Unified dataset row loaded from disk and fed into the inference pipeline."""
@@ -23,8 +30,8 @@ class DatasetRecord(BaseModel):
     task: str
     domain: str
     difficulty: str
-    usage_metadata: TContentMap | None
-    sample: TContentMap
+    usage_metadata: TPythonMap | None
+    sample: StandardSample
 
 
 class BaseDataset(ABC):
@@ -76,8 +83,8 @@ class RAGSyntheticDataset(BaseDataset):
     def to_pandas(self) -> DataFrame:
         return DataFrame([row.model_dump() for row in self.rows])
 
-    @classmethod
-    def json_to_pydantic(cls, filename: Path) -> DatasetRecord:
+    @staticmethod
+    def json_to_pydantic(filename: Path) -> DatasetRecord:
 
         _, root, task, domain, difficulty, uuid = filename.parts
 
@@ -89,5 +96,5 @@ class RAGSyntheticDataset(BaseDataset):
                 domain=domain,
                 difficulty=difficulty,
                 usage_metadata=content.get("usage_metadata"),
-                sample=content.get("sample")
+                sample=StandardSample.model_validate(content.get("sample"))
             )

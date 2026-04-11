@@ -1,3 +1,3 @@
-from .base import BaseTask, RagTask
+from .rag import RAGTask
 
-__all__ = ["BaseTask", "RagTask"]
+__all__ = ["RAGTask"]

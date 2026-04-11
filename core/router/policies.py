@@ -4,39 +4,36 @@ Each policy implements ``BaseRoutingPolicy`` and returns ``True`` to escalate to
 the LLM, or ``False`` to keep it with the SLM.
 """
 
-import logging
-import numpy as np
-import operator as op
+import operator
+from typing import Protocol, Any
 
-from typing import Any
-from abc import ABC, abstractmethod
-
-logger = logging.getLogger(__name__)
-
-from core.io.models import RerankingFeatures, ContextCompressionFeatures
-
-
-FeatureVector = RerankingFeatures | ContextCompressionFeatures
+from core.router import TFeatureVector
 
 _OPERATORS: dict[str, Any] = {
-    "gt":  op.gt,
-    "ge": op.ge,
-    "lt":  op.lt,
-    "le": op.le,
-    "eq": op.eq,
+    "gt":  operator.gt,
+    "ge": operator.ge,
+    "lt":  operator.lt,
+    "le": operator.le,
+    "eq": operator.eq,
 }
 
 
-class BaseRoutingPolicy(ABC):
-    """Base class for SLM/LLM routing policies."""
+class Routable(Protocol):
 
-    @abstractmethod
-    def decide(self, features: FeatureVector) -> bool:
-        """Return ``True`` to route to LLM, ``False`` to route to SLM."""
-        pass
+    def call_large_model(feature_vector: TFeatureVector) -> bool:
+        ...
 
 
-class ThresholdRoutingPolicy(BaseRoutingPolicy):
+class SLMRoutingPolicy:
+
+    def __init__(self) -> None:
+        ...
+    
+    def call_large_model(self) -> bool:
+        ...
+
+
+class ThresholdRoutingPolicy:
     """Routes to LLM when weighted sum of triggered rules exceeds total_threshold.
 
     Args:
@@ -74,8 +71,6 @@ class ThresholdRoutingPolicy(BaseRoutingPolicy):
         triggered_weight = 0.0
         triggered_count = 0
 
-        logger.debug("ThresholdRoutingPolicy.decide | features: %s", feature_values)
-
         for feature_name, (operator, threshold, weight) in self.rules.items():
             if feature_name not in feature_values:
                 continue
@@ -85,43 +80,3 @@ class ThresholdRoutingPolicy(BaseRoutingPolicy):
                 triggered_count += 1
 
         return triggered_count >= self.min_triggers and triggered_weight >= self.total_threshold
-
-
-class MLRoutingPolicy(BaseRoutingPolicy):
-    """Sklearn-based routing policy trained on labeled feature vectors.
-
-    param: model: Fitted sklearn classifier with ``predict_proba`` support.
-       type: Any
-    param: llm_threshold: Minimum predicted P(llm) required to route to LLM.
-       type: float
-
-    Example::
-
-        from sklearn.linear_model import LogisticRegression
-        clf = LogisticRegression().fit(X_train, y_train)
-
-        policy = MLRoutingPolicy(model=clf, llm_threshold=0.6)
-        use_llm = policy.decide(features)  # True if P(llm) >= 0.6
-    """
-
-    def __init__(self, model: Any, llm_threshold: float = 0.5) -> None:
-        self.model = model
-        self.llm_threshold = llm_threshold
-
-    def decide(self, features: FeatureVector) -> bool:
-        """Return ``True`` if the classifier's LLM probability meets ``llm_threshold``."""
-        feature_dump = features.model_dump()
-        logger.debug("MLRoutingPolicy.decide | features: %s", feature_dump)
-        vector = np.array([[feature_dump[f] for f in feature_dump]])
-        proba = self.model.predict_proba(vector)[0][1]
-        return proba >= self.llm_threshold
-
-
-class SLMRoutingPolicy(BaseRoutingPolicy):
-
-    def __init__(self) -> None:
-        ...
-    
-    def decide(self, features: FeatureVector) -> bool:
-        feature_dump = features.model_dump()
-        ...

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
 TSequence = tuple[str, str, BaseModel]
@@ -36,6 +36,6 @@ class LangchainMessageBuilder:
         return self.parsers[key]
     
     
-    def create_message(self, key: str, **kwargs) -> BaseMessage:
+    def create_message(self, key: str, **kwargs) -> SystemMessage:
         template, fmt = self._get_message_templating_objects(key)
         return SystemMessage(template.format(fmt=fmt, **kwargs))
