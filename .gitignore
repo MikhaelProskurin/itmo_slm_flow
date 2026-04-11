@@ -4,4 +4,4 @@
 tests
 generated
 __pycache__
-.ipynb
+*.ipynb
