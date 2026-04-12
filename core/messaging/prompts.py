@@ -6,7 +6,7 @@ the frozen ``PROMPT_REGISTRY`` singleton for consistent access across modules.
 
 from dataclasses import dataclass, asdict
 
-system_prompt_reranking = """
+RERANKING_DATA_GENERATION = """
 You are a synthetic data generator for training document reranking models in RAG systems.
 
 TASK:
@@ -35,7 +35,7 @@ Respond with ONLY the structured output — no commentary, no markdown fences, n
 """
 
 
-system_prompt_context_compression = """
+CONTEXT_COMPRESSION_DATA_GENERATION = """
 You are a synthetic data generator for training context compression models in RAG systems.
 Context compression = distilling retrieved documents into the minimal text sufficient to answer the question.
 
@@ -75,7 +75,7 @@ Respond with ONLY the structured output below.
 """
 
 
-reranking_inference_template = """
+RERANKING_INFERENCE = """
 Rerank the provided documents by relevance to the query. Return the most relevant document from given.
 
 QUERY:
@@ -89,7 +89,7 @@ OUTPUT FORMAT:
 """
 
 
-context_compression_inference_template = """
+CONTEXT_COMPRESSION_INFERENCE = """
 Compress the provided documents into a minimal context that preserves only the information necessary to answer the query. Remove all irrelevant, redundant, or off-topic content.
 
 QUERY:
@@ -102,12 +102,47 @@ OUTPUT FORMAT:
 {fmt}
 """
 
+TASK_DESCRIPTIONS = {
+    "reranking": (
+        "The system performs RERANKING: given a user query and a set of candidate "
+        "documents, it reorders them by relevance and returns the top document. "
+        "The reference answer contains a SINGLE most relevant document. "
+        "Evaluate whether the prediction selected the same document or one with "
+        "equivalent informational content. "
+        "Factual Precision: does the selected document match the reference document "
+        "in content and relevance to the query? "
+        "Completeness: does the selected document cover the same key information "
+        "as the reference document? A document that is partially relevant but misses "
+        "the core answer should score low. "
+        "Hallucination: did the system return a document that is irrelevant to the "
+        "query or contains information not aligned with the reference?"
+    ),
+    "context_compression": (
+        "The system performs CONTEXT COMPRESSION: given a user query and retrieved "
+        "passages, it produces a condensed version retaining only query-relevant "
+        "information. Evaluate whether the compressed output preserves all key facts "
+        "from the reference. Completeness means no critical information is lost during "
+        "compression. Hallucination means the compressed text introduces claims not "
+        "present in the original passages."
+    ),
+}
 
-system_prompt_evaluation = """
+JUDGE_EVALUATION = """
 ### Task Description:
 You are a strict evaluator assessing a RAG system's output.
 You will receive an instruction (user query), a response to evaluate,
 and a reference answer that represents a Score 5 response.
+
+**Evaluated Task Type:** {task_type}
+
+**Task Context:**
+{task_description}
+
+Apply the evaluation criteria below with this task type and context in mind.
+What constitutes a factual error, an omission, or a hallucination
+depends on the specific task described above.
+
+### Evaluation Protocol:
 
 1. Write a detailed feedback analyzing the response against EACH of the
    criteria below. Be critical — identify every omission, error, and
@@ -178,9 +213,9 @@ class PromptRegistry:
 
 
 PROMPT_REGISTRY = PromptRegistry(
-    reranking=system_prompt_reranking,
-    context_compression=system_prompt_context_compression,
-    evaluation=system_prompt_evaluation,
-    reranking_inference=reranking_inference_template,
-    context_compression_inference=context_compression_inference_template,
+    reranking_data_generation=RERANKING_DATA_GENERATION,
+    context_compression_data_generation=CONTEXT_COMPRESSION_DATA_GENERATION,
+    evaluation=JUDGE_EVALUATION,
+    reranking_inference=RERANKING_INFERENCE,
+    context_compression_inference=CONTEXT_COMPRESSION_INFERENCE,
 )

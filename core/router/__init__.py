@@ -1,6 +1,6 @@
 from .features import TFeatureVector, RAGFeatureExtractor
 from .language_model_router import TRoute, TModelSelection, LMRouter
-from .policies import Routable
+from .policies import Routable, WeightedRuleBasedRoutingPolicy
 
 __all__ = [
     "TFeatureVector",
@@ -8,5 +8,6 @@ __all__ = [
     "TRoute",
     "TModelSelection",
     "LMRouter",
-    "Routable"
+    "Routable",
+    "WeightedRuleBasedRoutingPolicy",
 ]

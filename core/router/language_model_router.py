@@ -1,9 +1,3 @@
-"""Central scheduler that wires together feature extractors and routing policies.
-
-``SlmFlowScheduler`` selects the appropriate model client (SLM or LLM) for each
-incoming task based on extracted features and the active operating mode.
-"""
-
 from typing import Literal
 
 from core.pipeline import TRoutingMode
@@ -19,15 +13,15 @@ TRoute = Literal["_slm", "_llm"]
 TModelSelection = tuple[TFeatureVector, TRoute]
 
 class LMRouter:
-    
+
     def __init__(
-            self, 
-            mode: TRoutingMode, 
-            routing_policy: Routable, 
+            self,
+            mode: TRoutingMode,
+            routing_policies: dict[str, Routable],
             feature_extractor: RAGFeatureExtractor,
         ) -> None:
         self.mode = mode
-        self.routing_policy = routing_policy
+        self.routing_policies = routing_policies
         self.feature_extractor = feature_extractor
 
     def select_language_model(self, task_instance: RAGTask) -> TModelSelection:
@@ -36,10 +30,18 @@ class LMRouter:
 
             case "slm":
                 selection = "_slm"
+
             case "llm":
                 selection = "_llm"
-            case "dynamic":
-                selection = "_llm" if self.routing_policy.call_large_model(fvector) else "_slm"
+
+            case "dynamic-rule-based":
+                policy = self.routing_policies[task_instance.name]
+                selection = "_llm" if policy.call_large_model(fvector) else "_slm"
+
+            case "dynamic-slm":
+                policy = self.routing_policies[task_instance.name]
+                selection = "_llm" if policy.call_large_model() else "_slm"
+
             case _:
-                raise ValueError("Unsupported routing mode recieved: %s", self.mode)
+                raise ValueError("Unsupported routing mode received: %s", self.mode)
         return fvector, selection

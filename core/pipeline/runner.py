@@ -6,20 +6,21 @@ with an async judge model.
 """
 
 import asyncio
+import tiktoken
 
 from typing import Literal, Any
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import AIMessage
+from langchain_core.messages import SystemMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
 
-from pandas import DataFrame
+from bert_score import score
+from rouge import Rouge
 
-from core.tasks.rag import RAGTask
-
+from core.tasks import RAGTask
 from core.data import RAGSyntheticDataset
-from core.messaging import LangchainMessageBuilder
+from core.messaging import LangchainMessageBuilder, TASK_DESCRIPTIONS
 from core.router import (
     TRoute,
     LMRouter,
@@ -55,21 +56,22 @@ class InferenceRecord(BaseModel):
     generated_answer: str
     routing: str
     feature_vector: TFeatureVector
+    # usage_metadata -> costs
 
 
-class EvaluationRecord(BaseModel):
+class EvaluationRecord(InferenceRecord):
     jscore: JScore
-    slm_routing_ratio: float
-    slm_success_ratio: float
     answer_metrics: "TAnswerMetrics"
 
 
 class RerankingMetrics(BaseModel):
     bert_f1: float
+    exact_match: bool
 
 
 class CompressionMetrics(BaseModel):
     bert_f1: float
+    rouge_l: float
     rouge_n: float
     compression_ratio: float
 
@@ -77,15 +79,17 @@ TAnswerMetrics = RerankingMetrics | CompressionMetrics
 TRoutingMode = Literal["slm", "llm", "dynamic"]
 
 class RAGPipelineRunner:
+
+    EVALUATION_BUILDER_KEY = "judge"
     
     def __init__(
             self,
             small_model: str,
             large_model: str,
-            judge_model: str, 
-            routing_mode: TRoutingMode, 
-            messages_builder: LangchainMessageBuilder, 
-            dynamic_routing_policiy: Routable = None,
+            judge_model: str,
+            routing_mode: TRoutingMode,
+            messages_builder: LangchainMessageBuilder,
+            dynamic_routing_policies: dict[str, Routable] = None,
             extractor_spacy_nlp: str = None,
             extractor_tokenizer_name: str = None,
             model_kwargs: dict[str, Any] = None
@@ -94,12 +98,24 @@ class RAGPipelineRunner:
             nlp=extractor_spacy_nlp,
             tokenizer=extractor_tokenizer_name
         )
-        self.router = LMRouter(routing_mode, dynamic_routing_policiy, extractor)
+        self.router = LMRouter(routing_mode, dynamic_routing_policies, extractor)
         self.messages_builder = messages_builder
         self._configure_clients(
             (small_model, large_model, judge_model),
             model_kwargs
         )
+        self._evaluation_tokenizer = tiktoken.get_encoding("cl100k_base")
+        self._rouge = Rouge()
+
+
+    @property
+    def _evaluation_messages_builder_key(self) -> str:
+        return self.EVALUATION_BUILDER_KEY
+
+
+    @property.setter
+    def set_evaluation_message_builder_key(self, value: str) -> None:
+        self.EVALUATION_BUILDER_KEY = value.strip()
 
 
     def _configure_clients(self, names: tuple[str], model_kwargs: dict[str, Any]) -> None:
@@ -131,7 +147,7 @@ class RAGPipelineRunner:
             features.append(fvector)
             coroutines.append(coroutine)
 
-        generated_answers = asyncio.gather(*coroutines)
+        generated_answers = await asyncio.gather(*coroutines)
 
         records = [
             InferenceRecord(
@@ -149,20 +165,108 @@ class RAGPipelineRunner:
 
 
     async def aevaluate(self, generated_answers: list[InferenceRecord]) -> list[EvaluationRecord]:
-        ...
+        
+        key = self.EVALUATION_BUILDER_KEY
+
+        messages, computed_metrics = [], []
+        for record in generated_answers:
+
+            task = record.task
+            description = TASK_DESCRIPTIONS[task]
+            
+            messages.append(
+                self.messages_builder.create_message(
+                    key,
+                    task_type=task,
+                    task_description=description,
+                    query=record.query,
+                    prediction=record.generated_answer,
+                    golden_answer=record.golden_answer 
+                )
+            )
+
+            match task:
+                
+                case "reranking":
+                    metrics = self._compute_reranking_metrics(record)
+                
+                case "context_compression":
+                    metrics = self._compute_context_compression_metrics(record)
+                
+                case _:
+                    raise ValueError("Unsupported metrics computation for task: %s", task)
+                
+            computed_metrics.append(metrics)
+
+        p = self.messages_builder.get_parser(key)
+        jscore_coroutines = [self._agenerate_jscore(m, p) for m in messages]
+        jscores = await asyncio.gather(*jscore_coroutines)
+
+        results = [
+            EvaluationRecord(
+                **model.model_dump(),
+                jscore=score,
+                answer_metrics=metrics
+            )
+            for model, score, metrics
+            in zip(generated_answers, jscores, computed_metrics)
+        ]
+        return results
 
 
-    def score_routing(self):
-        ...
+    async def _agenerate_jscore(
+            self, 
+            input_message: SystemMessage, 
+            output_parser: PydanticOutputParser[JScore]
+        ) -> JScore:
+        response: AIMessage = await self.judge.ainvoke(input_message)
+        try:
+            jscore = output_parser.parse(response.content)
+        except OutputParserException as ex:
+            jscore = ""
+        return jscore
 
 
-    def score_answer(self):
-        ...
+    def _compute_reranking_metrics(self, record: InferenceRecord) -> RerankingMetrics:
 
+        candidate, reference = record.generated_answer, record.golden_answer
+        hit = candidate.strip() == reference.strip()
 
-    def _compute_reranking_metrics(self) -> RerankingMetrics:
-        ...
+        _precision, _recall, f1 = score(
+            cands=[candidate],
+            refs=[reference],
+            lang="en",
+            model_type="microsoft/deberta-xlarge-mnli",
+            rescale_with_baseline=True,
+            verbose=False,
+        )
+        return RerankingMetrics(
+            bert_f1=f1.item(),
+            exact_match=hit
+        )
     
 
-    def _compute_context_compression_metrics(self) -> CompressionMetrics:
-        ...
+    def _compute_context_compression_metrics(self, record: InferenceRecord) -> CompressionMetrics:
+        
+        candidate, reference = record.generated_answer, record.golden_answer
+
+        _precision, _recall, f1 = score(
+            cands=[candidate],
+            refs=[reference],
+            lang="en",
+            model_type="microsoft/deberta-xlarge-mnli",
+            rescale_with_baseline=True,
+            verbose=False,
+        )
+        rouge_score = self._rouge.get_scores(
+            hyps=[candidate], refs=[reference], avg=False,
+        )
+        compression_ratio = (
+            len(self._evaluation_tokenizer.encode(candidate)) / record.feature_vector.total_context_token_count
+        )
+        return CompressionMetrics(
+            bert_f1=f1.item(),
+            rouge_l=rouge_score["rouge-l"]["f"],
+            rouge_n=rouge_score["rouge-2"]["f"],
+            compression_ratio=compression_ratio
+        )

@@ -1,9 +1,3 @@
-"""Feature extractors that transform RagTask inputs into numeric feature vectors for routing.
-
-Provides task-specific extractors (reranking, context compression) that share a
-common NLP pipeline (spaCy + tiktoken) via an abstract base class.
-"""
-
 import spacy
 from spacy.tokens import Doc, Token
 
@@ -86,7 +80,7 @@ class RAGFeatureExtractor:
     
     
     def compute_reranking_feature_vector(self, query: str, documents: list[str]) -> RerankingVector:
-        query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features()
+        query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features(query)
         lexical_overlaps = self.get_sample_vocabular_intersection(query, documents)
    
         return RerankingVector(
@@ -101,7 +95,7 @@ class RAGFeatureExtractor:
 
 
     def compute_compression_feature_vector(self, query: str, documents: list[str]) -> CompressionVector:
-        query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features()
+        query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features(query)
         lexical_overlaps = self.get_sample_vocabular_intersection(query, documents)
 
         tokens_by_document = [len(self.tokenizer.encode(d)) for d in documents]
@@ -133,7 +127,7 @@ class RAGFeatureExtractor:
 
     def get_sample_vocabular_intersection(self, query: str, documents: list[str]) -> list[float]:
         
-        serialized_query = self._serialize_to_spacy(query)
+        serialized_query = self.serialize_to_spacy(query)
         query_terms = self._to_unique_lemmas(serialized_query)
 
         intersections = []

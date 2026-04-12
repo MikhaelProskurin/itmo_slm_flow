@@ -1,9 +1,3 @@
-"""Abstract task interfaces and the concrete RAG task implementation.
-
-Defines how a dataset row is formatted into a prompt, dispatched to an LLM,
-and its raw string response returned for downstream evaluation.
-"""
-
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
 from langchain_core.exceptions import OutputParserException
@@ -23,7 +17,7 @@ class RAGTask:
         return cls(
             record.task, 
             record.sample.query,
-            record.sample.documents
+            [d.content for d in record.sample.documents]
         )
     
     async def agenerate_prediction(self, client: ChatOpenAI, messages_builder: LangchainMessageBuilder) -> str:
@@ -36,5 +30,5 @@ class RAGTask:
         try:
             output = messages_builder.get_parser(self.name).parse(response.content)
         except OutputParserException as ex:
-            output = ...
+            output = ""
         return output
