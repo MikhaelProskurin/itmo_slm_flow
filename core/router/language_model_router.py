@@ -52,6 +52,8 @@ class LMRouter:
             ValueError: If ``self.mode`` is not a recognised routing mode.
         """
         fvector = self.feature_extractor.extract_from_task(task_instance)
+        policy = self.routing_policies[task_instance.name]
+        
         match self.mode:
 
             case "slm":
@@ -61,11 +63,9 @@ class LMRouter:
                 selection = "_llm"
 
             case "dynamic-rule-based":
-                policy = self.routing_policies[task_instance.name]
                 selection = "_llm" if policy.call_large_model(fvector) else "_slm"
 
             case "dynamic-slm":
-                policy = self.routing_policies[task_instance.name]
                 selection = "_llm" if policy.call_large_model() else "_slm"
 
             case _:
