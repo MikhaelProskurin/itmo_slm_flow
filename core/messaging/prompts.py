@@ -208,7 +208,7 @@ class PromptRegistry:
 
     @property
     def to_dict(self) -> dict[str, str]:
-        """Return all prompts as a plain dictionary keyed by task name."""
+        """Return all prompts as a plain ``dict`` keyed by field name."""
         return asdict(self)
 
 

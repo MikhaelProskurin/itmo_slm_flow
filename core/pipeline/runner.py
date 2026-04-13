@@ -60,28 +60,52 @@ class InferenceRecord(BaseModel):
 
 
 class EvaluationRecord(InferenceRecord):
+    """``InferenceRecord`` extended with LLM-as-a-judge scores and automatic answer metrics."""
+
     jscore: JScore
     answer_metrics: "TAnswerMetrics"
 
 
 class RerankingMetrics(BaseModel):
+    """BERTScore F1 and exact-match hit rate for the reranking task."""
+
     bert_f1: float
     exact_match: bool
 
 
 class CompressionMetrics(BaseModel):
+    """Quality and compression metrics for the context compression task."""
+
     bert_f1: float
     rouge_l: float
     rouge_n: float
     compression_ratio: float
 
+
 TAnswerMetrics = RerankingMetrics | CompressionMetrics
 TRoutingMode = Literal["slm", "llm", "dynamic"]
 
+
 class RAGPipelineRunner:
+    """End-to-end pipeline that routes dataset rows to SLM/LLM, runs inference, and evaluates results.
+
+    Manages three ``ChatOpenAI`` clients (small model, large model, judge), a ``LMRouter`` for
+    per-row routing decisions, and evaluation logic (BERTScore, ROUGE, LLM-as-a-judge).
+
+    Args:
+        small_model: OpenAI model name for the SLM client.
+        large_model: OpenAI model name for the LLM client.
+        judge_model: OpenAI model name for the evaluator (judge) client.
+        routing_mode: One of ``"slm"``, ``"llm"``, ``"dynamic-rule-based"``, ``"dynamic-slm"``.
+        messages_builder: Shared builder for rendering task and evaluation prompts.
+        dynamic_routing_policies: Per-task ``Routable`` policies; required for dynamic modes.
+        extractor_spacy_nlp: spaCy model name passed to ``RAGFeatureExtractor``.
+        extractor_tokenizer_name: tiktoken model name passed to ``RAGFeatureExtractor``.
+        model_kwargs: Extra keyword arguments forwarded to every ``ChatOpenAI`` constructor.
+    """
 
     EVALUATION_BUILDER_KEY = "judge"
-    
+
     def __init__(
             self,
             small_model: str,
@@ -107,38 +131,45 @@ class RAGPipelineRunner:
         self._evaluation_tokenizer = tiktoken.get_encoding("cl100k_base")
         self._rouge = Rouge()
 
-
     @property
     def _evaluation_messages_builder_key(self) -> str:
         return self.EVALUATION_BUILDER_KEY
-
 
     @property.setter
     def set_evaluation_message_builder_key(self, value: str) -> None:
         self.EVALUATION_BUILDER_KEY = value.strip()
 
-
     def _configure_clients(self, names: tuple[str], model_kwargs: dict[str, Any]) -> None:
+        """Instantiate SLM, LLM, and judge clients from model name strings."""
         clients = [ChatOpenAI(model, **model_kwargs) for model in names]
         self.slm, self.llm, self.judge = tuple(clients)
-    
 
     def _get_routed_client(self, route: TRoute) -> ChatOpenAI:
+        """Return the ``ChatOpenAI`` client corresponding to the routing decision."""
         available_clients = {"_llm": self.llm, "_slm": self.slm}
         return available_clients[route]
 
-
     async def arun(self, dataset: RAGSyntheticDataset) -> list[InferenceRecord]:
+        """Run inference over the entire dataset, routing each row to SLM or LLM.
 
+        All prediction coroutines are gathered concurrently after routing decisions are made
+        synchronously for the full dataset.
+
+        Args:
+            dataset: Loaded synthetic dataset to iterate over.
+
+        Returns:
+            List of ``InferenceRecord`` objects, one per dataset row.
+        """
         tis, routes, features, coroutines = [], [], [], []
 
         for row in dataset:
-            
+
             ti = RAGTask.from_record(row)
             fvector, route = self.router.select_language_model(ti)
 
             coroutine = ti.agenerate_prediction(
-                self._get_routed_client(route), 
+                self._get_routed_client(route),
                 self.messages_builder
             )
 
@@ -163,9 +194,21 @@ class RAGPipelineRunner:
         ]
         return records
 
-
     async def aevaluate(self, generated_answers: list[InferenceRecord]) -> list[EvaluationRecord]:
-        
+        """Score a list of inference records with the judge model and automatic metrics.
+
+        Computes task-specific metrics (BERTScore, ROUGE, compression ratio) and concurrently
+        invokes the LLM judge for all records.
+
+        Args:
+            generated_answers: Records produced by ``arun``.
+
+        Returns:
+            List of ``EvaluationRecord`` objects with jscores and answer metrics populated.
+
+        Raises:
+            ValueError: If a record contains an unsupported task name.
+        """
         key = self.EVALUATION_BUILDER_KEY
 
         messages, computed_metrics = [], []
@@ -173,7 +216,7 @@ class RAGPipelineRunner:
 
             task = record.task
             description = TASK_DESCRIPTIONS[task]
-            
+
             messages.append(
                 self.messages_builder.create_message(
                     key,
@@ -181,21 +224,21 @@ class RAGPipelineRunner:
                     task_description=description,
                     query=record.query,
                     prediction=record.generated_answer,
-                    golden_answer=record.golden_answer 
+                    golden_answer=record.golden_answer
                 )
             )
 
             match task:
-                
+
                 case "reranking":
                     metrics = self._compute_reranking_metrics(record)
-                
+
                 case "context_compression":
                     metrics = self._compute_context_compression_metrics(record)
-                
+
                 case _:
                     raise ValueError("Unsupported metrics computation for task: %s", task)
-                
+
             computed_metrics.append(metrics)
 
         p = self.messages_builder.get_parser(key)
@@ -213,22 +256,21 @@ class RAGPipelineRunner:
         ]
         return results
 
-
     async def _agenerate_jscore(
-            self, 
-            input_message: SystemMessage, 
+            self,
+            input_message: SystemMessage,
             output_parser: PydanticOutputParser[JScore]
         ) -> JScore:
+        """Invoke the judge model and parse its structured evaluation. Returns ``""`` on parse failure."""
         response: AIMessage = await self.judge.ainvoke(input_message)
         try:
             jscore = output_parser.parse(response.content)
-        except OutputParserException as ex:
+        except OutputParserException:
             jscore = ""
         return jscore
 
-
     def _compute_reranking_metrics(self, record: InferenceRecord) -> RerankingMetrics:
-
+        """Compute BERTScore F1 and exact-match for a reranking prediction."""
         candidate, reference = record.generated_answer, record.golden_answer
         hit = candidate.strip() == reference.strip()
 
@@ -244,10 +286,9 @@ class RAGPipelineRunner:
             bert_f1=f1.item(),
             exact_match=hit
         )
-    
 
     def _compute_context_compression_metrics(self, record: InferenceRecord) -> CompressionMetrics:
-        
+        """Compute BERTScore, ROUGE-L/2, and token compression ratio for a compression prediction."""
         candidate, reference = record.generated_answer, record.golden_answer
 
         _precision, _recall, f1 = score(

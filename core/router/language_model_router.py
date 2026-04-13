@@ -1,3 +1,5 @@
+"""Language model router that maps each RAG task to either the SLM or the LLM client."""
+
 from typing import Literal
 
 from core.pipeline import TRoutingMode
@@ -12,7 +14,20 @@ TRoute = Literal["_slm", "_llm"]
 
 TModelSelection = tuple[TFeatureVector, TRoute]
 
+
 class LMRouter:
+    """Routes a ``RAGTask`` to either the small or large language model based on the active mode.
+
+    Supported modes:
+        - ``"slm"`` / ``"llm"``: static routing, always selects the respective model.
+        - ``"dynamic-rule-based"``: delegates to a ``WeightedRuleBasedRoutingPolicy`` per task.
+        - ``"dynamic-slm"``: delegates to an SLM-based ``SLMRoutingPolicy`` per task.
+
+    Args:
+        mode: Routing strategy from ``TRoutingMode``.
+        routing_policies: Per-task policy objects; required for dynamic modes.
+        feature_extractor: Extracts the feature vector used by rule-based policies.
+    """
 
     def __init__(
             self,
@@ -25,6 +40,17 @@ class LMRouter:
         self.feature_extractor = feature_extractor
 
     def select_language_model(self, task_instance: RAGTask) -> TModelSelection:
+        """Compute the feature vector for ``task_instance`` and return ``(fvector, route)``.
+
+        Args:
+            task_instance: The RAG task to route.
+
+        Returns:
+            A tuple of the extracted feature vector and the routing decision (``"_slm"`` or ``"_llm"``).
+
+        Raises:
+            ValueError: If ``self.mode`` is not a recognised routing mode.
+        """
         fvector = self.feature_extractor.extract_from_task(task_instance)
         match self.mode:
 

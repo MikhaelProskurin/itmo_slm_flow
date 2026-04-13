@@ -63,7 +63,8 @@ class PersistentSample(BaseModel):
 
 
 class DatasetDeclaration(BaseModel):
-    
+    """Declarative spec for a synthetic dataset: which tasks, domains, and difficulties to generate."""
+
     tasks: Sequence[str]
     domains: Sequence[str]
     difficulties: Sequence[str]
@@ -71,25 +72,49 @@ class DatasetDeclaration(BaseModel):
 
     @property
     def n_samples(self) -> int:
-        """Total number of examples that will be generated across all combinations."""
+        """Total number of examples across all task × domain × difficulty combinations."""
         return len(self.tasks) * len(self.domains) * len(self.difficulties) * self.batch_size
 
 
 class RAGDatasetAsyncGenerator:
-    
+    """Async generator that produces and persists synthetic RAG examples for all declared combinations.
+
+    Iterates over every (task, domain, difficulty) triple defined in the ``DatasetDeclaration``,
+    invokes the LLM in concurrent batches, parses structured outputs, and writes each sample as
+    a UUID-named JSON file under ``output_dir/{task}/{domain}/{difficulty}/``.
+
+    Args:
+        client: LangChain-wrapped OpenAI chat client used for generation calls.
+        declaration: Dataset spec describing which combinations to generate and how many per combo.
+        messages_builder: Builder that renders prompt templates and provides output parsers per task.
+        rate_limit: Maximum number of concurrent API calls (semaphore size).
+    """
+
     def __init__(
-        self, 
-        client: ChatOpenAI, 
+        self,
+        client: ChatOpenAI,
         declaration: DatasetDeclaration,
-        messages_builder: LangchainMessageBuilder, 
+        messages_builder: LangchainMessageBuilder,
         rate_limit: int = 15
     ) -> None:
         self.client = client
         self.declaration = declaration
         self.messages_builder = messages_builder
         self.rate_limit = rate_limit
-    
+
     async def agenerate_dataset(self, output_dir: str = "./tmp") -> list:
+        """Generate and persist all samples declared in ``self.declaration``.
+
+        Loops until every (task, domain, difficulty) combination has reached ``batch_size``
+        successfully parsed samples. Each sample is written to disk immediately after its batch
+        completes.
+
+        Args:
+            output_dir: Root directory under which per-combination subdirectories are created.
+
+        Returns:
+            Flat list of all successfully generated ``PersistentSample`` objects.
+        """
         combos = {
             (task, domain, difficulty): 0
             for task in self.declaration.tasks
@@ -98,11 +123,11 @@ class RAGDatasetAsyncGenerator:
         }
         messages = [
             self.messages_builder.create_message(
-                key, 
+                key,
                 domain=domain,
                 difficulty=difficulty
-            ) 
-            for key, domain, difficulty in combos    
+            )
+            for key, domain, difficulty in combos
         ]
         output_parsers = [self.messages_builder.get_parser(key) for key, _, _ in combos]
 
@@ -111,32 +136,44 @@ class RAGDatasetAsyncGenerator:
 
             coroutines = []
             for key, m, p in zip(future_samples, messages, output_parsers):
-                
+
                 coroutine = self.agenerate_batch(m, p, batch_size=future_samples[key])
                 coroutines.append(coroutine)
 
             batches = await asyncio.gather(*coroutines)
-            
+
             for key, batch in zip(future_samples, batches):
                 combos[key] += len(batch)
-                
+
                 path = Path(output_dir) / Path(*key)
                 persistence_coroutines = [self.apersist_sample(sample, path) for sample in batch]
                 await asyncio.gather(*persistence_coroutines)
-            
+
                 results.extend(batch)
-            
+
         return results
 
 
     async def agenerate_batch(self, input_message: BaseMessage, output_parser: PydanticOutputParser, batch_size: int) -> list[PersistentSample]:
-        
-        coroutines = [self.client.ainvoke([input_message]) for m in range(batch_size)]    
+        """Concurrently invoke the LLM ``batch_size`` times and return successfully parsed samples.
+
+        Malformed model responses are caught and logged; they do not raise and are excluded
+        from the returned list.
+
+        Args:
+            input_message: Rendered system prompt for this (task, domain, difficulty) combination.
+            output_parser: Pydantic parser matching the expected output schema for this task.
+            batch_size: Number of parallel LLM calls to make.
+
+        Returns:
+            List of ``PersistentSample`` objects for responses that parsed without error.
+        """
+        coroutines = [self.client.ainvoke([input_message]) for m in range(batch_size)]
         responses_batch: list[AIMessage] = await asyncio.gather(*coroutines)
-        
+
         successfully_parsed = []
         for response in responses_batch:
-            
+
             try:
                 parsed, meta = output_parser.parse(response.content), response.usage_metadata
                 successfully_parsed.append(PersistentSample(usage_metadata=meta, task_row_model=parsed))
@@ -147,24 +184,24 @@ class RAGDatasetAsyncGenerator:
         logger.info("Batch generated, batch_len=%s", len(successfully_parsed))
         return successfully_parsed
 
-    
-    async def apersist_sample(self, sample: PersistentSample, path: Path) -> None:
 
+    async def apersist_sample(self, sample: PersistentSample, path: Path) -> None:
+        """Write ``sample`` as a UUID-named JSON file under ``path``, creating directories as needed."""
         path.mkdir(parents=True, exist_ok=True)
 
         uuid_path = path / f"{uuid.uuid4().hex}.json"
 
         async with aiofiles.open(uuid_path, mode="w", encoding="utf-8") as file:
             await file.write(sample.model_dump_json())
-    
+
 
     def get_remaining_samples(self, combos: TCombo) -> TCombo:
-
+        """Return only those combos that still need more samples to reach ``batch_size``."""
         remaining = {}
         for key, samples_ready in combos.items():
             count_remaining = self.declaration.batch_size - samples_ready
 
             if count_remaining:
-                remaining[key] = count_remaining 
-        
+                remaining[key] = count_remaining
+
         return remaining

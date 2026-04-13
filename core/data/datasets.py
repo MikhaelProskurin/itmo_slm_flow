@@ -19,6 +19,8 @@ from core.data import RAGDocument
 TPythonMap = dict[str, Any]
 
 class StandardSample(BaseModel):
+    """Canonical in-memory representation of a single RAG example (query, documents, answer)."""
+
     query: str
     documents: list[RAGDocument]
     golden_answer: str
@@ -63,6 +65,11 @@ class BaseDataset(ABC):
 
 
 class RAGSyntheticDataset(BaseDataset):
+    """File-backed dataset that loads all JSON examples from a directory tree and shuffles them.
+
+    Expected directory structure: ``{root}/{task}/{domain}/{difficulty}/{uuid}.json``.
+    Metadata (task, domain, difficulty) is inferred from the path components.
+    """
 
     def __init__(self, rows: list[DatasetRecord]) -> None:
         self.rows = rows
@@ -76,16 +83,18 @@ class RAGSyntheticDataset(BaseDataset):
 
     @classmethod
     def from_files(cls, directory: str | Path) -> "RAGSyntheticDataset":
+        """Recursively load all ``*.json`` files under ``directory`` and return a dataset instance."""
         rows = [cls.json_to_pydantic(file) for file in Path(directory).rglob("*.json")]
         return cls(rows)
 
     @property
     def to_pandas(self) -> DataFrame:
+        """Return all rows as a Pandas DataFrame with one row per dataset record."""
         return DataFrame([row.model_dump() for row in self.rows])
 
     @staticmethod
     def json_to_pydantic(filename: Path) -> DatasetRecord:
-
+        """Parse a single JSON file into a ``DatasetRecord``, inferring metadata from its path."""
         _, root, task, domain, difficulty, uuid = filename.parts
 
         with filename.open(mode="r", encoding="utf-8") as f:
