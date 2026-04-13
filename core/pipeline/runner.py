@@ -1,8 +1,8 @@
-"""Inference pipeline that orchestrates dataset iteration, model routing, and LLM-as-a-judge evaluation.
+"""End-to-end RAG inference pipeline: routing, prediction, and LLM-as-a-judge evaluation.
 
-``InferenceFlow`` iterates over a dataset, delegates each row to the appropriate task,
-uses the scheduler to route it to the SLM or LLM, and optionally scores predictions
-with an async judge model.
+``RAGPipelineRunner`` drives the full experiment loop — iterating over a dataset, routing
+each row to the SLM or LLM via ``LMRouter``, gathering predictions concurrently, and
+scoring results with BERTScore, ROUGE, and a structured judge model.
 """
 
 import asyncio
