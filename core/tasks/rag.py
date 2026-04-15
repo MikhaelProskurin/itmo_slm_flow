@@ -34,15 +34,12 @@ class RAGTask:
     async def agenerate_prediction(self, client: ChatOpenAI, messages_builder: LangchainMessageBuilder) -> str:
         """Invoke the model and return the parsed prediction string.
 
-        Parses the model response using the parser registered for ``self.name``.
-        Returns an empty string if the response cannot be parsed.
-
         Args:
             client: LangChain-wrapped chat model to call.
             messages_builder: Builder used to render the task prompt and retrieve the output parser.
 
         Returns:
-            Parsed prediction string, or ``""`` on ``OutputParserException``.
+            Parsed prediction string, or ``"structured_output_parsing_error"`` on ``OutputParserException``.
         """
         message = messages_builder.create_message(
             self.name,
@@ -53,5 +50,5 @@ class RAGTask:
         try:
             output = messages_builder.get_parser(self.name).parse(response.content)
         except OutputParserException:
-            output = ""
+            output = "structured_output_parsing_error"
         return output

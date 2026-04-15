@@ -12,6 +12,7 @@ from typing import Literal, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
 
@@ -56,7 +57,7 @@ class InferenceRecord(BaseModel):
     generated_answer: str
     routing: str
     feature_vector: TFeatureVector
-    # usage_metadata -> costs
+    usage_metadata: UsageMetadata
 
 
 class EvaluationRecord(InferenceRecord):
@@ -261,12 +262,23 @@ class RAGPipelineRunner:
             input_message: SystemMessage,
             output_parser: PydanticOutputParser[JScore]
         ) -> JScore:
-        """Invoke the judge model and parse its structured evaluation. Returns ``""`` on parse failure."""
+        """Invoke the judge model and parse its structured evaluation.
+
+        Returns:
+            Parsed ``JScore``, or a sentinel ``JScore`` with all scores set to ``0`` and
+            ``feedback="structured_output_parsing_error"`` on ``OutputParserException``.
+        """
         response: AIMessage = await self.judge.ainvoke(input_message)
         try:
             jscore = output_parser.parse(response.content)
         except OutputParserException:
-            jscore = ""
+            jscore = JScore(
+                feedback="structured_output_parsing_error",
+                factual_precision=0,
+                completeness=0,
+                hallucination=0,
+                final_score=0
+            )
         return jscore
 
     def _compute_reranking_metrics(self, record: InferenceRecord) -> RerankingMetrics:

@@ -8,6 +8,8 @@ from core.router import (
     Routable,
     TFeatureVector,
     RAGFeatureExtractor,
+    SLMRoutingPolicy,
+    WeightedRuleBasedRoutingPolicy
 )
 
 TRoute = Literal["_slm", "_llm"]
@@ -62,11 +64,15 @@ class LMRouter:
             case "llm":
                 selection = "_llm"
 
-            case "dynamic-rule-based":
-                selection = "_llm" if policy.call_large_model(fvector) else "_slm"
+            case "dynamic":
 
-            case "dynamic-slm":
-                selection = "_llm" if policy.call_large_model() else "_slm"
+                if isinstance(policy, WeightedRuleBasedRoutingPolicy):
+                    use_large_model_decision = policy.call_large_model(fvector)
+                
+                elif isinstance(policy, SLMRoutingPolicy):
+                    use_large_model_decision = policy.call_large_model(task_instance)
+                
+                selection = "_llm" if use_large_model_decision else "_slm"
 
             case _:
                 raise ValueError("Unsupported routing mode received: %s", self.mode)

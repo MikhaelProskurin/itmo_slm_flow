@@ -3,15 +3,21 @@
 import operator
 from typing import Protocol, Callable, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, AIMessage
+from langchain_core.messages import AIMessage
+from langchain_core.exceptions import OutputParserException
 
 from core.router import TFeatureVector
+from core.tasks import RAGTask
+from core.messaging import LangchainMessageBuilder
 
 TOperators = Literal["gt", "ge", "lt", "le", "eq"]
 
-TRoutableFeatures = TFeatureVector | SystemMessage
+TRoutableFeatures = TFeatureVector | RAGTask
+
+class SLMRouterOutput(BaseModel):
+    confidence: float = Field(description="")
 
 
 class WeightedRule(BaseModel):
@@ -46,14 +52,39 @@ class SLMRoutingPolicy:
     Args:
         client: LangChain-wrapped chat model that acts as the routing SLM.
     """
+    KEY = "slm_routing_policy"
 
-    def __init__(self, client: ChatOpenAI) -> None:
+    def __init__(
+            self, 
+            client: ChatOpenAI, 
+            message_builder: LangchainMessageBuilder,
+            confidence_threshold: float
+        ) -> None:
         self.client = client
+        self.message_builder = message_builder
+        self.confidence_threshold = confidence_threshold
 
     def call_large_model(self, features: TRoutableFeatures) -> bool:
         """Invoke the SLM with ``features`` and return its routing decision."""
-        response: AIMessage = self.client.invoke(features)
+        message = self.message_builder.create_message(
+            self.KEY,
+            query=features.query,
+            documents=features.documents
+        )
+        response: AIMessage = self.client.invoke(message)
+        try:
+            model: SLMRouterOutput = (
+                self.message_builder
+                .get_parser(self.KEY)
+                .parse(response.content)
+            )
+            router_model_confidence = model.confidence
+            
+        except OutputParserException as ex:
+            router_model_confidence = 0
 
+        return router_model_confidence >= self.confidence_threshold
+        
 
 class WeightedRuleBasedRoutingPolicy:
     """Routes to the LLM when enough weighted feature rules fire simultaneously.
