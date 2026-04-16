@@ -87,7 +87,7 @@ core/
 
 **`data/datasets.py`** — `StandardSample` и `DatasetRecord` (единый формат строки в памяти), `BaseDataset` (ABC с `from_files`, `to_pandas`, `__len__`, `__getitem__`) и `RAGSyntheticDataset`: рекурсивно загружает JSON из `{root}/{task}/{domain}/{difficulty}/{uuid}.json`, определяет метаданные из компонентов пути, перемешивает при загрузке.
 
-**`tasks/rag.py`** — `RAGTask`: обёртка единицы инференса (name, query, documents). `from_record()` конструирует из `DatasetRecord`; `agenerate_prediction()` рендерит промпт через `LangchainMessageBuilder`, асинхронно вызывает модель, парсит через `PydanticOutputParser` и возвращает `""` при `OutputParserException`.
+**`tasks/rag.py`** — `RAGTask`: обёртка единицы инференса (name, query, documents). `from_record()` конструирует из `DatasetRecord`; `agenerate_prediction()` рендерит промпт через `LangchainMessageBuilder`, асинхронно вызывает модель, парсит через `PydanticOutputParser` и возвращает `"structured_output_parsing_error"` при `OutputParserException`.
 
 **`pipeline/runner.py`** — `RAGPipelineRunner`: управляет тремя клиентами `ChatOpenAI` (SLM, LLM, judge) и `LMRouter`. `arun()` итерирует датасет, маршрутизирует каждую строку, конкурентно собирает предсказания и возвращает `InferenceRecord`. `aevaluate()` оценивает записи с помощью BERTScore, ROUGE и LLM-судьи, возвращая `EvaluationRecord`. Определяет `JScore`, `InferenceRecord`, `EvaluationRecord`, `RerankingMetrics`, `CompressionMetrics`.
 
@@ -119,4 +119,4 @@ core/
 
 Структура файлов: `slm_flow_df/{task}/{domain}/{difficulty}/{uuid}.json`
 
-Каждый файл содержит `query`, `documents` (список `idx` + `content`) и `golden_answer`. Примеры сжатия также включают `optimal_compression_length`.
+Каждый файл содержит `query`, `documents` (список `idx` + `content`) и `golden_answer`.
