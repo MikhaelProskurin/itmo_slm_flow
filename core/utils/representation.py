@@ -10,6 +10,12 @@ def plot_curve_by_artifacts(x, y) -> None:
     plt.show()
 
 def dump_to_csv(data: list[BaseModel], path: str) -> None:
+    """Serialize a list of Pydantic models to a CSV file.
+
+    Args:
+        data: Records to serialize; each item is dumped via ``model_dump()``.
+        path: Destination path without extension; ``.csv`` is appended automatically.
+    """
     dataframe = pd.DataFrame([row.model_dump() for row in data])
     dataframe.to_csv(path + ".csv", index=False)
     return
