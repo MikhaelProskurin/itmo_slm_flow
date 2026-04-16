@@ -11,7 +11,9 @@ from core.messaging import LangchainMessageBuilder
 
 
 class RAGTaskPrediction(BaseModel):
-    content: str = Field(description="")
+    """Structured output from a RAG inference call, holding the model's raw text prediction."""
+
+    content: str = Field(description="Model's task output: top-ranked document or compressed context.")
 
 
 class RAGTask:

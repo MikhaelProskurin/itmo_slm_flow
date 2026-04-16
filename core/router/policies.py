@@ -17,6 +17,8 @@ TOperators = Literal["gt", "ge", "lt", "le", "eq"]
 TRoutableFeatures = TFeatureVector | RAGTask
 
 class SLMRouterOutput(BaseModel):
+    """Structured output from the SLM routing judge, carrying a Likert-scale LLM-necessity score."""
+
     confidence: int = Field(
         description=(
             "Integer on a 1–5 Likert scale indicating how strongly the task requires an LLM over an SLM. "
