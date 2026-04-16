@@ -102,6 +102,7 @@ OUTPUT FORMAT:
 {fmt}
 """
 
+
 TASK_DESCRIPTIONS = {
     "reranking": (
         "The system performs RERANKING: given a user query and a set of candidate "
@@ -126,6 +127,7 @@ TASK_DESCRIPTIONS = {
         "present in the original passages."
     ),
 }
+
 
 JUDGE_EVALUATION = """
 ### Task Description:
@@ -192,6 +194,63 @@ Score 5: Strictly grounded — no information beyond what the reference supports
 """
 
 
+SLM_AS_ROUTER = """
+You are a routing judge for a RAG pipeline.
+You receive a task, a query, and retrieved documents. You estimate how strongly THIS instance requires a Large Language Model (LLM) instead of a Small Language Model (SLM).
+
+You judge the task itself — not your own certainty about any answer.
+
+## Scale (1–5 Likert)
+- 1 — Trivial for SLM. Clear query, answer localized in one document, pure extraction or obvious ranking.
+- 2 — Mostly easy for SLM. Slight ambiguity or minor distractors, but no real reasoning required.
+- 3 — Borderline. Moderate ambiguity, some cross-document alignment, or mild domain specificity.
+- 4 — Likely needs LLM. Multi-hop reasoning, contradictions to resolve, dense domain notation, or synthesis beyond extraction.
+- 5 — Clearly needs LLM. Heavy multi-hop chains, conflicting evidence, abstract or underspecified query, or long scattered context requiring unification.
+
+## Signals for task = reranking
+Raise the score when:
+- Relevance depends on subtle semantic distinctions rather than lexical overlap.
+- Several documents look superficially relevant but only some actually answer the query.
+- Query is abstract, comparative, or requires understanding intent beyond keywords.
+
+Lower the score when:
+- One document obviously matches the query both lexically and topically.
+- Candidate documents cover clearly different topics and are easy to separate.
+
+## Signals for task = context_compression
+Raise the score when:
+- Key information is scattered across many documents and must be unified.
+- Documents contain contradictions that must be resolved before compressing.
+- Query demands synthesis, causal explanation, or comparison.
+- Relevant facts are interleaved with closely related distractors.
+
+Lower the score when:
+- Relevant content is concentrated in a small contiguous span of a single document.
+- Documents are short and the query is narrowly extractive.
+
+## Calibration
+- Commit to exactly one integer from 1 to 5. Do not output ranges, decimals, or hedged values.
+- Do not default to 3 when unsure — pick the nearest level that best matches the signals.
+- Use the full scale across instances; avoid clustering only on 1 and 5.
+
+## Input
+
+### task
+{name}
+
+### query
+{query}
+
+### documents
+{documents}
+
+## Output
+Produce only the JSON object described below — no preamble, no reasoning text.
+
+{fmt}
+"""
+
+
 @dataclass(frozen=True)
 class PromptRegistry:
     """Immutable registry of all prompt templates used across the project.
@@ -205,6 +264,7 @@ class PromptRegistry:
     evaluation: str
     reranking_inference: str
     context_compression_inference: str
+    slm_as_router: str
 
     @property
     def to_dict(self) -> dict[str, str]:
@@ -218,4 +278,5 @@ PROMPT_REGISTRY = PromptRegistry(
     evaluation=JUDGE_EVALUATION,
     reranking_inference=RERANKING_INFERENCE,
     context_compression_inference=CONTEXT_COMPRESSION_INFERENCE,
+    slm_as_router=SLM_AS_ROUTER
 )

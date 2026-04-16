@@ -1,3 +1,8 @@
-from .rag import RAGTask
-
-__all__ = ["RAGTask"]
+from .rag import (
+    RAGTask,
+    RAGTaskPrediction
+)
+__all__ = [
+    "RAGTask", 
+    "RAGTaskPrediction"
+]

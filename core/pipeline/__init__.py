@@ -8,7 +8,6 @@ from .runner import (
     TAnswerMetrics,
     TRoutingMode
 )
-
 __all__ = [
     "RAGPipelineRunner",
     "JScore",

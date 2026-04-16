@@ -19,7 +19,7 @@ from langchain_core.exceptions import OutputParserException
 from bert_score import score
 from rouge import Rouge
 
-from core.tasks import RAGTask
+from core.tasks import RAGTask, RAGTaskPrediction
 from core.data import RAGSyntheticDataset
 from core.messaging import LangchainMessageBuilder, TASK_DESCRIPTIONS
 from core.router import (
@@ -179,14 +179,14 @@ class RAGPipelineRunner:
             features.append(fvector)
             coroutines.append(coroutine)
 
-        generated_answers = await asyncio.gather(*coroutines)
+        generated_answers: list[RAGTaskPrediction] = await asyncio.gather(*coroutines)
 
         records = [
             InferenceRecord(
                 task=ti.name,
                 query=ti.query,
                 golden_answer=row.sample.golden_answer,
-                generated_answer=answer,
+                generated_answer=answer.content,
                 routing=route,
                 feature_vector=fvector
             )

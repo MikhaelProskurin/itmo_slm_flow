@@ -7,7 +7,7 @@ from .synthetic import (
     RerankingSample,
     CompressionSample,
     DatasetDeclaration,
-    AsyncDeclarativeDatasetGenerator
+    RAGDatasetAsyncGenerator
 )
 __all__ = [
     "DatasetRecord", 
@@ -16,5 +16,5 @@ __all__ = [
     "RerankingSample",
     "CompressionSample", 
     "DatasetDeclaration", 
-    "AsyncDeclarativeDatasetGenerator"
+    "RAGDatasetAsyncGenerator"
 ]

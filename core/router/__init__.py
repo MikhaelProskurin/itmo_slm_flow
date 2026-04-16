@@ -1,7 +1,19 @@
-from .features import TFeatureVector, RAGFeatureExtractor
-from .language_model_router import TRoute, TModelSelection, LMRouter
-from .policies import Routable, WeightedRuleBasedRoutingPolicy, SLMRoutingPolicy, SLMRouterOutput
-
+from .features import (
+    TFeatureVector, 
+    RAGFeatureExtractor
+)
+from .language_model_router import (
+    TRoute, 
+    TModelSelection, 
+    LMRouter
+)
+from .policies import (
+    Routable, 
+    WeightedRule,
+    WeightedRuleBasedRoutingPolicy, 
+    SLMRoutingPolicy, 
+    SLMRouterOutput
+)
 __all__ = [
     "TFeatureVector",
     "RAGFeatureExtractor",
@@ -10,6 +22,7 @@ __all__ = [
     "LMRouter",
     "Routable",
     "SLMRoutingPolicy",
+    "WeightedRule",
     "WeightedRuleBasedRoutingPolicy",
     "SLMRouterOutput"
 ]

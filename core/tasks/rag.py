@@ -1,11 +1,17 @@
 """RAG task abstraction wrapping a single inference request (query + documents → prediction)."""
 
+from pydantic import BaseModel, Field
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
 from langchain_core.exceptions import OutputParserException
 
 from core.data import DatasetRecord
 from core.messaging import LangchainMessageBuilder
+
+
+class RAGTaskPrediction(BaseModel):
+    content: str = Field(description="")
 
 
 class RAGTask:
@@ -31,7 +37,7 @@ class RAGTask:
             [d.content for d in record.sample.documents]
         )
 
-    async def agenerate_prediction(self, client: ChatOpenAI, messages_builder: LangchainMessageBuilder) -> str:
+    async def agenerate_prediction(self, client: ChatOpenAI, messages_builder: LangchainMessageBuilder) -> RAGTaskPrediction:
         """Invoke the model and return the parsed prediction string.
 
         Args:
@@ -50,5 +56,5 @@ class RAGTask:
         try:
             output = messages_builder.get_parser(self.name).parse(response.content)
         except OutputParserException:
-            output = "structured_output_parsing_error"
+            output = RAGTaskPrediction(content="structured_output_parsing_error")
         return output

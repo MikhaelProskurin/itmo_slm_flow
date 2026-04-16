@@ -95,19 +95,16 @@ class RAGDatasetAsyncGenerator:
         client: ChatOpenAI,
         declaration: DatasetDeclaration,
         messages_builder: LangchainMessageBuilder,
-        rate_limit: int = 15
     ) -> None:
         self.client = client
         self.declaration = declaration
         self.messages_builder = messages_builder
-        self.rate_limit = rate_limit
 
-    async def agenerate_dataset(self, output_dir: str = "./tmp") -> list:
+    async def agenerate_dataset(self, output_dir: str = "./tmp") -> list[PersistentSample]:
         """Generate and persist all samples declared in ``self.declaration``.
 
-        Loops until every (task, domain, difficulty) combination has reached ``batch_size``
-        successfully parsed samples. Each sample is written to disk immediately after its batch
-        completes.
+        Retries failed LLM responses until every (task, domain, difficulty) combination has
+        accumulated ``batch_size`` successfully parsed samples.
 
         Args:
             output_dir: Root directory under which per-combination subdirectories are created.

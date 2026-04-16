@@ -53,10 +53,12 @@ class BaseDataset(ABC):
 
     @abstractmethod
     def __len__(self) -> int:
+        """Return the number of records in the dataset."""
         pass
 
     @abstractmethod
     def __getitem__(self, idx: int) -> DatasetRecord:
+        """Return the record at position ``idx``."""
         pass
 
     def __iter__(self):
@@ -89,7 +91,7 @@ class RAGSyntheticDataset(BaseDataset):
 
     @property
     def to_pandas(self) -> DataFrame:
-        """Return all rows as a Pandas DataFrame with one row per dataset record."""
+        """Return all rows as a Pandas DataFrame."""
         return DataFrame([row.model_dump() for row in self.rows])
 
     @staticmethod

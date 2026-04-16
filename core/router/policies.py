@@ -17,7 +17,13 @@ TOperators = Literal["gt", "ge", "lt", "le", "eq"]
 TRoutableFeatures = TFeatureVector | RAGTask
 
 class SLMRouterOutput(BaseModel):
-    confidence: float = Field(description="")
+    confidence: int = Field(
+        description=(
+            "Integer on a 1–5 Likert scale indicating how strongly the task requires an LLM over an SLM. "
+            "1 = trivial for SLM; 3 = borderline; 5 = clearly requires LLM. "
+            "Judges the task itself, not the model's self-certainty."
+        )
+    )
 
 
 class WeightedRule(BaseModel):
@@ -68,6 +74,7 @@ class SLMRoutingPolicy:
         """Invoke the SLM with ``features`` and return its routing decision."""
         message = self.message_builder.create_message(
             self.KEY,
+            name=features.name,
             query=features.query,
             documents=features.documents
         )
