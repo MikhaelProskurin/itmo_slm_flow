@@ -29,6 +29,7 @@ from core.router import (
     TFeatureVector,
     RAGFeatureExtractor
 )
+from core.router.language_model_router import TRoutingMode
 
 from pydantic import BaseModel, Field
 
@@ -84,7 +85,6 @@ class CompressionMetrics(BaseModel):
 
 
 TAnswerMetrics = RerankingMetrics | CompressionMetrics
-TRoutingMode = Literal["slm", "llm", "dynamic"]
 
 
 class RAGPipelineRunner:
@@ -135,10 +135,6 @@ class RAGPipelineRunner:
     @property
     def _evaluation_messages_builder_key(self) -> str:
         return self.EVALUATION_BUILDER_KEY
-
-    @property.setter
-    def set_evaluation_message_builder_key(self, value: str) -> None:
-        self.EVALUATION_BUILDER_KEY = value.strip()
 
     def _configure_clients(self, names: tuple[str], model_kwargs: dict[str, Any]) -> None:
         """Instantiate SLM, LLM, and judge clients from model name strings."""

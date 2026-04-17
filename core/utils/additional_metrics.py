@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from core.pipeline import EvaluationRecord
+from core.pipeline.runner import EvaluationRecord
 from core.router import TRoute
 
 

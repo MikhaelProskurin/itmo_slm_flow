@@ -62,13 +62,6 @@ class RAGFeatureExtractor:
         """Lexical overlap threshold above which a document is considered relevant."""
         return self.RELEVANCE_THRESHOLD
 
-    @relevance_threshold.setter
-    def relevance_threshold(self, value: float) -> None:
-        if 0 <= value <= 1:
-            self.RELEVANCE_THRESHOLD = value
-            return
-        raise ValueError("Invalid relevance_threshold value: must be in [0, 1].")
-
     @classmethod
     def from_model_names(cls, nlp: str, tokenizer: str) -> "RAGFeatureExtractor":
         """Construct by loading spaCy and tiktoken models by name."""

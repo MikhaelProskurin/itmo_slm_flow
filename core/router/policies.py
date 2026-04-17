@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
 from langchain_core.exceptions import OutputParserException
 
-from core.router import TFeatureVector
+from core.router.features import TFeatureVector
 from core.tasks import RAGTask
 from core.messaging import LangchainMessageBuilder
 

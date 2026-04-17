@@ -2,16 +2,18 @@
 
 from typing import Literal
 
-from core.pipeline import TRoutingMode
 from core.tasks import RAGTask
-from core.router import (
-    Routable,
-    TFeatureVector,
-    RAGFeatureExtractor,
-    SLMRoutingPolicy,
+from core.router.features import (
+    TFeatureVector, 
+    RAGFeatureExtractor
+)
+from core.router.policies import (
+    Routable, 
+    SLMRoutingPolicy, 
     WeightedRuleBasedRoutingPolicy
 )
 
+TRoutingMode = Literal["slm", "llm", "dynamic"]
 TRoute = Literal["_slm", "_llm"]
 
 TModelSelection = tuple[TFeatureVector, TRoute]

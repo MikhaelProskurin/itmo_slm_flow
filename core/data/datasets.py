@@ -14,7 +14,7 @@ from pandas import DataFrame
 from pydantic import BaseModel
 
 from abc import ABC, abstractmethod
-from core.data import RAGDocument
+from core.data.synthetic import RAGDocument
 
 TPythonMap = dict[str, Any]
 
@@ -107,5 +107,5 @@ class RAGSyntheticDataset(BaseDataset):
                 domain=domain,
                 difficulty=difficulty,
                 usage_metadata=content.get("usage_metadata"),
-                sample=StandardSample.model_validate(content.get("sample"))
+                sample=StandardSample.model_validate(content.get("task_row_model"))
             )

@@ -259,8 +259,8 @@ class PromptRegistry:
     Use ``PROMPT_REGISTRY`` — the pre-built singleton — instead of instantiating directly.
     """
 
-    reranking: str
-    context_compression: str
+    reranking_data_generation: str
+    context_compression_data_generation: str
     evaluation: str
     reranking_inference: str
     context_compression_inference: str
