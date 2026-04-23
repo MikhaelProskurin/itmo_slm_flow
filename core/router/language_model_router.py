@@ -14,9 +14,6 @@ from core.router.policies import (
 )
 
 TRoutingMode = Literal["slm", "llm", "dynamic"]
-TRoute = Literal["_slm", "_llm"]
-
-TModelSelection = tuple[TFeatureVector, TRoute]
 
 
 class LMRouter:
@@ -43,7 +40,7 @@ class LMRouter:
         self.routing_policies = routing_policies
         self.feature_extractor = feature_extractor
 
-    def select_language_model(self, task_instance: RAGTask) -> TModelSelection:
+    async def select_language_model(self, task_instance: RAGTask) -> tuple[TFeatureVector, str]:
         """Compute the feature vector for ``task_instance`` and return ``(fvector, route)``.
 
         Args:
@@ -56,8 +53,7 @@ class LMRouter:
             ValueError: If ``self.mode`` is not a recognised routing mode.
         """
         fvector = self.feature_extractor.extract_from_task(task_instance)
-        policy = self.routing_policies[task_instance.name]
-        
+
         match self.mode:
 
             case "slm":
@@ -67,13 +63,17 @@ class LMRouter:
                 selection = "_llm"
 
             case "dynamic":
+                policy = self.routing_policies[task_instance.name]
 
                 if isinstance(policy, WeightedRuleBasedRoutingPolicy):
-                    use_large_model_decision = policy.call_large_model(fvector)
-                
+                    use_large_model_decision = await policy.call_large_model(fvector)
+
                 elif isinstance(policy, SLMRoutingPolicy):
-                    use_large_model_decision = policy.call_large_model(task_instance)
-                
+                    use_large_model_decision = await policy.call_large_model(task_instance)
+
+                else:
+                    raise ValueError("Unsupported policy type received: %s", type(policy))
+
                 selection = "_llm" if use_large_model_decision else "_slm"
 
             case _:

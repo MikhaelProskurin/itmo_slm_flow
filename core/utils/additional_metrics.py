@@ -1,9 +1,9 @@
 """Post-evaluation metrics for assessing SLM routing efficiency across an evaluation run."""
 
+from typing import Literal
 from pydantic import BaseModel
 
 from core.pipeline.runner import EvaluationRecord
-from core.router import TRoute
 
 
 class SLMRoutingMetrics(BaseModel):
@@ -24,7 +24,7 @@ def compute_slm_routing_metrics(records: list[EvaluationRecord], threshold: floa
         ``SLMRoutingMetrics`` with ``slm_success_ratio`` (successful SLM calls / total SLM calls)
         and ``slm_routing_ratio`` (SLM calls / all calls).
     """
-    _routing: TRoute = "_slm"
+    _routing: Literal["_slm"] = "_slm"
 
     small_model_calls = list(filter(lambda row: row.routing == _routing, records))
     success_small_model_calls = list(filter(lambda row: row.jscore.final_score >= threshold, records))

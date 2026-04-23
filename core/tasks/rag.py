@@ -1,13 +1,20 @@
 """RAG task abstraction wrapping a single inference request (query + documents → prediction)."""
 
+import logging
+
 from pydantic import BaseModel, Field
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.exceptions import OutputParserException
 
 from core.data import DatasetRecord
 from core.messaging import LangchainMessageBuilder
+
+logger = logging.getLogger(__name__)
+
+TPredictionResult = tuple["RAGTaskPrediction", UsageMetadata]
 
 
 class RAGTaskPrediction(BaseModel):
@@ -39,24 +46,32 @@ class RAGTask:
             [d.content for d in record.sample.documents]
         )
 
-    async def agenerate_prediction(self, client: ChatOpenAI, messages_builder: LangchainMessageBuilder) -> RAGTaskPrediction:
-        """Invoke the model and return the parsed prediction string.
+    async def agenerate_prediction(
+        self,
+        client: ChatOpenAI,
+        messages_builder: LangchainMessageBuilder,
+    ) -> TPredictionResult:
+        """Invoke the model and return the parsed prediction together with usage metadata.
 
         Args:
             client: LangChain-wrapped chat model to call.
             messages_builder: Builder used to render the task prompt and retrieve the output parser.
 
         Returns:
-            Parsed prediction string, or ``"structured_output_parsing_error"`` on ``OutputParserException``.
+            Tuple of the parsed ``RAGTaskPrediction`` and ``UsageMetadata`` from the API response.
+            On ``OutputParserException`` the prediction content is set to ``"structured_output_parsing_error"``
+            and usage metadata is still forwarded from the raw response.
         """
         message = messages_builder.create_message(
             self.name,
             query=self.query,
             documents=self.documents
         )
-        response: AIMessage = await client.ainvoke(message)
+        logger.info("Sending generation request: task=%s, model=%s", self.name, client.model_name)
+        response: AIMessage = await client.ainvoke([message])
         try:
             output = messages_builder.get_parser(self.name).parse(response.content)
-        except OutputParserException:
+        except OutputParserException as ex:
+            logger.info("OutputParserException in task=%s: %s", self.name, ex)
             output = RAGTaskPrediction(content="structured_output_parsing_error")
-        return output
+        return output, response.usage_metadata

@@ -27,7 +27,7 @@ class StandardSample(BaseModel):
 
 
 class DatasetRecord(BaseModel):
-    """Unified dataset row loaded from disk and fed into the inference pipeline."""
+    """Unified dataset row loaded from the disk and fed into the inference pipeline."""
 
     task: str
     domain: str
@@ -80,8 +80,13 @@ class RAGSyntheticDataset(BaseDataset):
     def __len__(self) -> int:
         return len(self.rows)
 
-    def __getitem__(self, idx: int) -> DatasetRecord:
+    def __getitem__(self, idx: int | slice) -> "DatasetRecord | RAGSyntheticDataset":
+        if isinstance(idx, slice):
+            return RAGSyntheticDataset(self.rows[idx])
         return self.rows[idx]
+
+    def __repr__(self) -> str:
+        return f"RAGSyntheticDataset(rows={self.rows})"
 
     @classmethod
     def from_files(cls, directory: str | Path) -> "RAGSyntheticDataset":
@@ -109,3 +114,9 @@ class RAGSyntheticDataset(BaseDataset):
                 usage_metadata=content.get("usage_metadata"),
                 sample=StandardSample.model_validate(content.get("task_row_model"))
             )
+
+    def sample(self, fraction: float) -> "RAGSyntheticDataset":
+        """Returns a random sample of the dataset."""
+        if 0.0 < fraction <= 1.0:
+            return RAGSyntheticDataset(rows=random.sample(self.rows, int(fraction * len(self))))
+        raise ValueError("Fraction must be between 0.0 and 1.0 inclusive.")

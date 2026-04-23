@@ -6,9 +6,10 @@ scoring results with BERTScore, ROUGE, and a structured judge model.
 """
 
 import asyncio
+import logging
 import tiktoken
 
-from typing import Literal, Any
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage
@@ -19,11 +20,10 @@ from langchain_core.exceptions import OutputParserException
 from bert_score import score
 from rouge import Rouge
 
-from core.tasks import RAGTask, RAGTaskPrediction
+from core.tasks import RAGTask, TPredictionResult
 from core.data import RAGSyntheticDataset
 from core.messaging import LangchainMessageBuilder, TASK_DESCRIPTIONS
 from core.router import (
-    TRoute,
     LMRouter,
     Routable,
     TFeatureVector,
@@ -32,6 +32,9 @@ from core.router import (
 from core.router.language_model_router import TRoutingMode
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
 
 class JScore(BaseModel):
     """Structured output from the LLM-as-a-judge evaluator."""
@@ -102,7 +105,7 @@ class RAGPipelineRunner:
         dynamic_routing_policies: Per-task ``Routable`` policies; required for dynamic modes.
         extractor_spacy_nlp: spaCy model name passed to ``RAGFeatureExtractor``.
         extractor_tokenizer_name: tiktoken model name passed to ``RAGFeatureExtractor``.
-        model_kwargs: Extra keyword arguments forwarded to every ``ChatOpenAI`` constructor.
+        model_kwargs: Extra keyword arguments are forwarded to every ``ChatOpenAI`` constructor.
     """
 
     EVALUATION_BUILDER_KEY = "judge"
@@ -138,10 +141,10 @@ class RAGPipelineRunner:
 
     def _configure_clients(self, names: tuple[str], model_kwargs: dict[str, Any]) -> None:
         """Instantiate SLM, LLM, and judge clients from model name strings."""
-        clients = [ChatOpenAI(model, **model_kwargs) for model in names]
+        clients = [ChatOpenAI(model=model, **model_kwargs) for model in names]
         self.slm, self.llm, self.judge = tuple(clients)
 
-    def _get_routed_client(self, route: TRoute) -> ChatOpenAI:
+    def _get_routed_client(self, route: str) -> ChatOpenAI:
         """Return the ``ChatOpenAI`` client corresponding to the routing decision."""
         available_clients = {"_llm": self.llm, "_slm": self.slm}
         return available_clients[route]
@@ -158,24 +161,19 @@ class RAGPipelineRunner:
         Returns:
             List of ``InferenceRecord`` objects, one per dataset row.
         """
-        tis, routes, features, coroutines = [], [], [], []
+        logger.info("arun started: dataset_size=%d, routing_mode=%s", len(dataset), self.router.mode)
 
-        for row in dataset:
+        tis = [RAGTask.from_record(row) for row in dataset.rows]
 
-            ti = RAGTask.from_record(row)
-            fvector, route = self.router.select_language_model(ti)
+        routing_results = await asyncio.gather(
+            *[self.router.select_language_model(ti) for ti in tis]
+        )
 
-            coroutine = ti.agenerate_prediction(
-                self._get_routed_client(route),
-                self.messages_builder
-            )
-
-            tis.append(ti)
-            routes.append(route)
-            features.append(fvector)
-            coroutines.append(coroutine)
-
-        generated_answers: list[RAGTaskPrediction] = await asyncio.gather(*coroutines)
+        answer_generating_coroutines = [
+            ti.agenerate_prediction(self._get_routed_client(route), self.messages_builder)
+            for ti, (_, route) in zip(tis, routing_results)
+        ]
+        generated_answers: list[TPredictionResult] = await asyncio.gather(*answer_generating_coroutines)
 
         records = [
             InferenceRecord(
@@ -184,11 +182,14 @@ class RAGPipelineRunner:
                 golden_answer=row.sample.golden_answer,
                 generated_answer=answer.content,
                 routing=route,
-                feature_vector=fvector
+                feature_vector=fvector,
+                usage_metadata=usage,
             )
-            for ti, route, fvector, row, answer
-            in zip(tis, routes, features, dataset.rows, generated_answers)
+            for ti, (fvector, route), row, (answer, usage)
+            in zip(tis, routing_results, dataset.rows, generated_answers)
         ]
+
+        logger.info("arun finished: records_produced=%d", len(records))
         return records
 
     async def aevaluate(self, generated_answers: list[InferenceRecord]) -> list[EvaluationRecord]:
@@ -206,6 +207,8 @@ class RAGPipelineRunner:
         Raises:
             ValueError: If a record contains an unsupported task name.
         """
+        logger.info("aevaluate started: records_count=%d", len(generated_answers))
+
         key = self.EVALUATION_BUILDER_KEY
 
         messages, computed_metrics = [], []
@@ -245,12 +248,14 @@ class RAGPipelineRunner:
         results = [
             EvaluationRecord(
                 **model.model_dump(),
-                jscore=score,
+                jscore=jsc,
                 answer_metrics=metrics
             )
-            for model, score, metrics
+            for model, jsc, metrics
             in zip(generated_answers, jscores, computed_metrics)
         ]
+
+        logger.info("aevaluate finished: records_evaluated=%d", len(results))
         return results
 
     async def _agenerate_jscore(
@@ -264,10 +269,12 @@ class RAGPipelineRunner:
             Parsed ``JScore``, or a sentinel ``JScore`` with all scores set to ``0`` and
             ``feedback="structured_output_parsing_error"`` on ``OutputParserException``.
         """
-        response: AIMessage = await self.judge.ainvoke(input_message)
+        logger.info("Sending judge evaluation request: model=%s", self.judge.model_name)
+        response: AIMessage = await self.judge.ainvoke([input_message])
         try:
             jscore = output_parser.parse(response.content)
-        except OutputParserException:
+        except OutputParserException as ex:
+            logger.info("OutputParserException in judge evaluation: %s", ex)
             jscore = JScore(
                 feedback="structured_output_parsing_error",
                 factual_precision=0,
@@ -277,7 +284,8 @@ class RAGPipelineRunner:
             )
         return jscore
 
-    def _compute_reranking_metrics(self, record: InferenceRecord) -> RerankingMetrics:
+    @staticmethod
+    def _compute_reranking_metrics(record: InferenceRecord) -> RerankingMetrics:
         """Compute BERTScore F1 and exact-match for a reranking prediction."""
         candidate, reference = record.generated_answer, record.golden_answer
         hit = candidate.strip() == reference.strip()
@@ -286,7 +294,6 @@ class RAGPipelineRunner:
             cands=[candidate],
             refs=[reference],
             lang="en",
-            model_type="microsoft/deberta-xlarge-mnli",
             rescale_with_baseline=True,
             verbose=False,
         )
@@ -303,7 +310,6 @@ class RAGPipelineRunner:
             cands=[candidate],
             refs=[reference],
             lang="en",
-            model_type="microsoft/deberta-xlarge-mnli",
             rescale_with_baseline=True,
             verbose=False,
         )

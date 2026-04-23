@@ -8,7 +8,7 @@ from .representation import (
 )
 __all__ = [
     "compute_slm_routing_metrics",
-    "SLMRoutingMetrics"
+    "SLMRoutingMetrics",
     "plot_curve_by_artifacts",
     "dump_to_csv"
 ]

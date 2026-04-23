@@ -6,7 +6,7 @@ from spacy.tokens import Doc, Token
 import tiktoken
 from wordfreq import word_frequency
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 from core.tasks import RAGTask
 
@@ -67,7 +67,7 @@ class RAGFeatureExtractor:
         """Construct by loading spaCy and tiktoken models by name."""
         return cls(
             nlp=spacy.load(nlp),
-            tokenizer=tiktoken.encoding_for_model(tokenizer)
+            tokenizer=tiktoken.get_encoding(tokenizer)
         )
 
     def extract_from_task(self, task: RAGTask) -> TFeatureVector:
@@ -95,7 +95,7 @@ class RAGFeatureExtractor:
     def compute_reranking_feature_vector(self, query: str, documents: list[str]) -> RerankingVector:
         """Compute the full feature vector for a reranking task instance."""
         query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features(query)
-        lexical_overlaps = self.get_sample_vocabular_intersection(query, documents)
+        lexical_overlaps = self.get_sample_vocabulary_intersection(query, documents)
 
         return RerankingVector(
             query_token_count=query_token_count,
@@ -110,7 +110,7 @@ class RAGFeatureExtractor:
     def compute_compression_feature_vector(self, query: str, documents: list[str]) -> CompressionVector:
         """Compute the full feature vector for a context compression task instance."""
         query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features(query)
-        lexical_overlaps = self.get_sample_vocabular_intersection(query, documents)
+        lexical_overlaps = self.get_sample_vocabulary_intersection(query, documents)
 
         tokens_by_document = [len(self.tokenizer.encode(d)) for d in documents]
         relevant_documents_count = sum(1 for overlap in lexical_overlaps if overlap >= self.RELEVANCE_THRESHOLD)
@@ -127,7 +127,7 @@ class RAGFeatureExtractor:
 
     def get_documents_avg_cosine_similarity(self, documents: list[str]) -> float:
         """Return the mean pairwise spaCy cosine similarity across all document pairs."""
-        serialized_documents: list[Doc] = list(self.nlp.pipe(documents, n_process=-1))
+        serialized_documents: list[Doc] = list(self.nlp.pipe(documents, n_process=1))
 
         similarities = []
         for i in range(len(serialized_documents)):
@@ -138,7 +138,7 @@ class RAGFeatureExtractor:
 
         return sum(similarities) / len(similarities)
 
-    def get_sample_vocabular_intersection(self, query: str, documents: list[str]) -> list[float]:
+    def get_sample_vocabulary_intersection(self, query: str, documents: list[str]) -> list[float]:
         """Return per-document lexical overlap ratios between query lemmas and document lemmas."""
         serialized_query = self.serialize_to_spacy(query)
         query_terms = self._to_unique_lemmas(serialized_query)
@@ -155,15 +155,15 @@ class RAGFeatureExtractor:
 
     def get_query_features(self, query: str) -> TQueryFeatures:
         """Return ``(token_count, noun_chunk_count, avg_word_frequency)`` for the query."""
-        spacy_document = self.nlp(query)
+        spacy_document = self.serialize_to_spacy(query)
 
         num_tokens = len(self.tokenizer.encode(query))
 
-        words = [token.text for token in self.serialize_to_spacy(query)]
+        words = [token.text for token in spacy_document]
         word_frequencies = [word_frequency(w, lang="en") for w in words]
         avg_word_frequency = sum(word_frequencies) / len(words)
 
-        noun_chunks_count = len(list(spacy_document.noun_chunks))
+        noun_chunks_count = len(list(self.nlp(query).noun_chunks))
 
         return num_tokens, noun_chunks_count, avg_word_frequency
 
@@ -173,8 +173,10 @@ class RAGFeatureExtractor:
         clear_tokens = [token for token in spacy_document if self._is_clear_token(token)]
         return clear_tokens
 
-    def _to_unique_lemmas(self, tokens: list[Token]) -> set[str]:
+    @staticmethod
+    def _to_unique_lemmas(tokens: list[Token]) -> set[str]:
         return {token.lemma_ for token in tokens}
 
-    def _is_clear_token(self, token: Token) -> bool:
+    @staticmethod
+    def _is_clear_token(token: Token) -> bool:
         return token.is_alpha and not (token.is_punct or token.is_stop or token.is_space)

@@ -1,8 +1,10 @@
 from .rag import (
     RAGTask,
-    RAGTaskPrediction
+    RAGTaskPrediction,
+    TPredictionResult,
 )
 __all__ = [
-    "RAGTask", 
-    "RAGTaskPrediction"
+    "RAGTask",
+    "RAGTaskPrediction",
+    "TPredictionResult",
 ]

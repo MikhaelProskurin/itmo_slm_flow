@@ -1,5 +1,6 @@
 """Routing policy implementations for SLM vs LLM selection decisions."""
 
+import logging
 import operator
 from typing import Protocol, Callable, Literal
 
@@ -11,6 +12,8 @@ from langchain_core.exceptions import OutputParserException
 from core.router.features import TFeatureVector
 from core.tasks import RAGTask
 from core.messaging import LangchainMessageBuilder
+
+logger = logging.getLogger(__name__)
 
 TOperators = Literal["gt", "ge", "lt", "le", "eq"]
 
@@ -40,7 +43,7 @@ class WeightedRule(BaseModel):
 class Routable(Protocol):
     """Structural protocol for routing policies; satisfied by any class with a ``call_large_model`` method."""
 
-    def call_large_model(self, features: TRoutableFeatures) -> bool:
+    async def call_large_model(self, features: TRoutableFeatures) -> bool:
         """Return ``True`` to route to the large model, ``False`` for the small model."""
         ...
 
@@ -72,7 +75,7 @@ class SLMRoutingPolicy:
         self.message_builder = message_builder
         self.confidence_threshold = confidence_threshold
 
-    def call_large_model(self, features: TRoutableFeatures) -> bool:
+    async def call_large_model(self, features: TRoutableFeatures) -> bool:
         """Invoke the SLM with ``features`` and return its routing decision."""
         message = self.message_builder.create_message(
             self.KEY,
@@ -80,7 +83,8 @@ class SLMRoutingPolicy:
             query=features.query,
             documents=features.documents
         )
-        response: AIMessage = self.client.invoke(message)
+        logger.info("Sending routing request: model=%s", self.client.model_name)
+        response: AIMessage = await self.client.ainvoke([message])
         try:
             model: SLMRouterOutput = (
                 self.message_builder
@@ -88,8 +92,9 @@ class SLMRoutingPolicy:
                 .parse(response.content)
             )
             router_model_confidence = model.confidence
-            
+
         except OutputParserException as ex:
+            logger.info("OutputParserException in SLMRoutingPolicy: %s", ex)
             router_model_confidence = 0
 
         return router_model_confidence >= self.confidence_threshold
@@ -119,7 +124,7 @@ class WeightedRuleBasedRoutingPolicy:
         self.min_triggers = min_triggers
         self.cumulative_weights_threshold = cumulative_weights_threshold
 
-    def call_large_model(self, features: TRoutableFeatures) -> bool:
+    async def call_large_model(self, features: TRoutableFeatures) -> bool:
         """Return ``True`` if triggered rules meet both the count and cumulative weight thresholds."""
         feature_values = features.model_dump()
         triggered_weight = 0.0

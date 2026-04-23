@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from langchain_core.messages import SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-TSequence = tuple[str, str, BaseModel]
+TSequence = tuple[str, str, type[BaseModel]]
 
 
 class LangchainMessageBuilder:
@@ -15,8 +15,8 @@ class LangchainMessageBuilder:
     instances, keyed by task name. Use ``from_sequence`` for the standard construction pattern.
 
     Args:
-        templates: Mapping from task key to raw prompt template string (must contain ``{fmt}``).
-        parsers: Mapping from task key to the corresponding ``PydanticOutputParser``.
+        templates: Mapping from the task key to a raw prompt template string (must contain ``{fmt}``).
+        parsers: Mapping from the task key to the corresponding ``PydanticOutputParser``.
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class LangchainMessageBuilder:
             *args: Each element is a 3-tuple of ``(task_key, prompt_template, pydantic_output_model)``.
 
         Returns:
-            A fully initialised ``LangchainMessageBuilder``.
+            A fully initialized ``LangchainMessageBuilder``.
         """
         templates = {}
         parsers = {}
@@ -47,7 +47,7 @@ class LangchainMessageBuilder:
         return cls(templates, parsers)
 
     def _get_message_templating_objects(self, key: str) -> tuple[str, str]:
-        """Return the raw template and serialised format instructions for ``key``."""
+        """Return the raw template and serialized format instructions for ``key``."""
         return self.templates[key], self.parsers[key].get_format_instructions()
 
     def get_parser(self, key: str) -> PydanticOutputParser:

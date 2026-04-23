@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 
 from pydantic import BaseModel
 
-def plot_curve_by_artifacts(x, y) -> None:
+def plot_curve_by_artifacts(x: list[float], y: list[float]) -> None:
     fig, ax = ...
     plt.show()
 
-def dump_to_csv(data: list[BaseModel], path: str) -> None:
+def dump_to_csv(data: list[type[BaseModel]], path: str) -> None:
     """Serialize a list of Pydantic models to a CSV file.
 
     Args:
