@@ -314,8 +314,8 @@ class RAGPipelineRunner:
             verbose=False,
         )
         rouge_score = self._rouge.get_scores(
-            hyps=[candidate], refs=[reference], avg=False,
-        )
+            hyps=[candidate], refs=[reference], avg=False
+        )[0]
         compression_ratio = (
             len(self._evaluation_tokenizer.encode(candidate)) / record.feature_vector.total_context_token_count
         )

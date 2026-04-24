@@ -198,40 +198,68 @@ SLM_AS_ROUTER = """
 You are a routing judge for a RAG pipeline.
 You receive a task, a query, and retrieved documents. You estimate how strongly THIS instance requires a Large Language Model (LLM) instead of a Small Language Model (SLM).
 
-You judge the task itself — not your own certainty about any answer.
+You judge the task difficulty — not your own ability to answer it.
 
-## Scale (1–5 Likert)
-- 1 — Trivial for SLM. Clear query, answer localized in one document, pure extraction or obvious ranking.
-- 2 — Mostly easy for SLM. Slight ambiguity or minor distractors, but no real reasoning required.
-- 3 — Borderline. Moderate ambiguity, some cross-document alignment, or mild domain specificity.
-- 4 — Likely needs LLM. Multi-hop reasoning, contradictions to resolve, dense domain notation, or synthesis beyond extraction.
-- 5 — Clearly needs LLM. Heavy multi-hop chains, conflicting evidence, abstract or underspecified query, or long scattered context requiring unification.
+IMPORTANT: Score 1 or 2 in the majority of straightforward cases. Reserve 4–5 for genuinely hard instances.
+Scores 1–2 route to the fast SLM. Scores 4–5 route to the expensive LLM. Use this consequence when calibrating.
 
-## Signals for task = reranking
-Raise the score when:
-- Relevance depends on subtle semantic distinctions rather than lexical overlap.
-- Several documents look superficially relevant but only some actually answer the query.
-- Query is abstract, comparative, or requires understanding intent beyond keywords.
+## Scale (1–5)
+- 1 — Trivial. Answer is localized in one document; pure extraction or obvious ranking.
+- 2 — Easy. Minor ambiguity or light distractors; no cross-document reasoning needed.
+- 3 — Borderline. Moderate ambiguity or mild domain specificity; use sparingly.
+- 4 — Hard. Multi-hop reasoning, contradictions, or synthesis across documents.
+- 5 — Very hard. Conflicting evidence, abstract query, or scattered context requiring unification.
 
-Lower the score when:
-- One document obviously matches the query both lexically and topically.
-- Candidate documents cover clearly different topics and are easy to separate.
+## Signals — reranking
 
-## Signals for task = context_compression
-Raise the score when:
-- Key information is scattered across many documents and must be unified.
-- Documents contain contradictions that must be resolved before compressing.
-- Query demands synthesis, causal explanation, or comparison.
-- Relevant facts are interleaved with closely related distractors.
+Lower score (toward 1–2) when:
+- One document clearly matches the query both lexically and topically.
+- Documents cover distinct topics and are easy to separate.
+- Query uses specific keywords present verbatim in the relevant document.
 
-Lower the score when:
-- Relevant content is concentrated in a small contiguous span of a single document.
+Raise score (toward 4–5) when:
+- Relevance depends on subtle semantics rather than keyword overlap.
+- Multiple documents look relevant but only some actually answer the query.
+- Query is abstract, comparative, or requires inferring intent beyond keywords.
+
+## Signals — context_compression
+
+Lower score (toward 1–2) when:
+- Relevant content is in a single contiguous span of one document.
 - Documents are short and the query is narrowly extractive.
+- Answer requires selecting, not synthesizing.
 
-## Calibration
-- Commit to exactly one integer from 1 to 5. Do not output ranges, decimals, or hedged values.
-- Do not default to 3 when unsure — pick the nearest level that best matches the signals.
-- Use the full scale across instances; avoid clustering only on 1 and 5.
+Raise score (toward 4–5) when:
+- Key information is scattered and must be unified across documents.
+- Documents contain contradictions requiring resolution before compression.
+- Query demands causal explanation or comparison, not extraction.
+
+## Calibration examples
+
+### reranking — score 1
+Query: "What is the boiling point of water?"
+Situation: Document 2 contains "Water boils at 100°C at sea level." Other documents discuss unrelated chemistry topics.
+→ Direct lexical match, single document, no ambiguity.
+
+### reranking — score 2
+Query: "Which algorithm is faster for sparse graphs?"
+Situation: Two documents discuss Dijkstra and Bellman-Ford respectively with clear complexity figures.
+→ Minor comparison needed, but each document is self-contained and unambiguous.
+
+### reranking — score 4
+Query: "What approach best explains the anomaly in the 2019 trial results?"
+Situation: Four documents each partially address the trial; relevance depends on understanding experimental context.
+→ Requires cross-document reasoning and intent inference.
+
+### context_compression — score 1
+Query: "What is the dosage for ibuprofen?"
+Situation: Document 1 contains a single paragraph with dosage instructions. Other documents discuss unrelated drugs.
+→ Extractive, single span, no synthesis.
+
+### context_compression — score 4
+Query: "Summarize the conflicting findings on mRNA vaccine efficacy."
+Situation: Six documents from different studies report varying efficacy figures with different methodologies.
+→ Synthesis across contradictory sources required.
 
 ## Input
 

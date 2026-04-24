@@ -87,7 +87,6 @@ class RAGDatasetAsyncGenerator:
         client: LangChain-wrapped OpenAI chat client used for generation calls.
         declaration: Dataset spec describing which combinations to generate and how many per combo.
         messages_builder: Builder that renders prompt templates and provides output parsers per task.
-        rate_limit: Maximum number of concurrent API calls (semaphore size).
     """
 
     def __init__(
@@ -182,7 +181,8 @@ class RAGDatasetAsyncGenerator:
         return successfully_parsed
 
 
-    async def apersist_sample(self, sample: PersistentSample, path: Path) -> None:
+    @staticmethod
+    async def apersist_sample(sample: PersistentSample, path: Path) -> None:
         """Write ``sample`` as a UUID-named JSON file under ``path``, creating directories as needed."""
         path.mkdir(parents=True, exist_ok=True)
 
