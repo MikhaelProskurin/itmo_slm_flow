@@ -40,18 +40,11 @@ docker-compose up -d
 
 ## Образец .env
 
-```env
-# API keys
-OPENAI_API_KEY=<your_openai_key>
-VLLM_API_KEY=<your_vllm_key>
-OPENROUTER_API_KEY=<your_openrouter_key>
+Фреймворк использует [OpenRouter](https://openrouter.ai/) как единую точку доступа к моделям. Имена моделей задаются непосредственно в ноутбуках.
 
-# Model names
-LLM_MODEL_NAME=<llm_model_name>
-SLM_MODEL_NAME=<slm_model_name>
-JUDGE_MODEL_NAME=<judge_model_name>
-GENERATOR_MODEL_NAME=<generator_model_name>
-SELF_HOSTED_MODEL_NAME=<vllm_model_name>  # для docker-compose
+```env
+OPENROUTER_API_KEY=<your_openrouter_key>
+BASE_URL=https://openrouter.ai/api/v1
 ```
 
 ## Архитектура
@@ -105,7 +98,7 @@ core/
 |-------|----------|
 | `"slm"` | Всегда использует малую модель |
 | `"llm"` | Всегда использует большую модель |
-| `"dynamic"` | Динамический выбор через `WeightedRuleBasedRoutingPolicy` или `SLMRoutingPolicy` |
+| `"dynamic"` | Динамический выбор: диспетчеризует к `WeightedRuleBasedRoutingPolicy` или `SLMRoutingPolicy` в зависимости от типа переданной политики |
 
 ## Датасет
 

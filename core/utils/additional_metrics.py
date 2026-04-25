@@ -22,10 +22,12 @@ class EvaluationSummary(BaseModel):
 
     reranking_avg_bert_f1: float
     reranking_avg_exact_match: float
+    reranking_avg_jscore: float
     compression_avg_bert_f1: float
     compression_avg_rouge_l: float
     compression_avg_rouge_n: float
     compression_avg_compression_ratio: float
+    compression_avg_jscore: float
 
 
 def compute_slm_routing_metrics(records: list[EvaluationRecord], threshold: float = 4.0) -> SLMRoutingMetrics:
@@ -42,7 +44,7 @@ def compute_slm_routing_metrics(records: list[EvaluationRecord], threshold: floa
     _routing: Literal["_slm"] = "_slm"
 
     small_model_calls = list(filter(lambda row: row.routing == _routing, records))
-    success_small_model_calls = list(filter(lambda row: row.jscore.final_score >= threshold, records))
+    success_small_model_calls = list(filter(lambda row: row.jscore.final_score >= threshold, small_model_calls))
 
     return SLMRoutingMetrics(
         slm_success_ratio=len(success_small_model_calls) / len(small_model_calls),
@@ -67,8 +69,10 @@ def get_evaluation_summary(records: list[EvaluationRecord]) -> EvaluationSummary
     return EvaluationSummary(
         reranking_avg_bert_f1=average_fn([r.answer_metrics.bert_f1 for r in _reranking]),
         reranking_avg_exact_match=average_fn([1.0 if r.answer_metrics.exact_match else 0.0 for r in _reranking]),
+        reranking_avg_jscore=average_fn([r.jscore.final_score for r in _reranking]),
         compression_avg_bert_f1=average_fn([r.answer_metrics.bert_f1 for r in _compression]),
         compression_avg_rouge_l=average_fn([r.answer_metrics.rouge_l for r in _compression]),
         compression_avg_rouge_n=average_fn([r.answer_metrics.rouge_n for r in _compression]),
         compression_avg_compression_ratio=average_fn([r.answer_metrics.compression_ratio for r in _compression]),
+        compression_avg_jscore=average_fn([r.jscore.final_score for r in _compression])
     )
