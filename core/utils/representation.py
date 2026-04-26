@@ -20,7 +20,7 @@ def dump_to_csv(data: list[type[BaseModel]], path: str, create_temp_dir: bool = 
     Args:
         data: Records to serialize; each item is dumped via ``model_dump()``.
         path: Destination path without extension; ``.csv`` is appended automatically.
-        create_temp_dir:
+        create_temp_dir: Flag for creating a temporary directory ``./_tmp`` for writing.
     """
     _tmp_location = Path("./_tmp")
 
