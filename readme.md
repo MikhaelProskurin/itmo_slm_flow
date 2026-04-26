@@ -32,11 +32,7 @@ docker-compose up -d
 - `pydantic` — типизированные модели данных
 - `aiofiles`, `asyncio` — асинхронный I/O
 - `spacy` + `en_core_web_lg` — NLP-признаки
-- `tiktoken` — подсчёт токенов
-- `wordfreq` — частота слов
 - `pandas` — табличные данные
-- `bert-score`, `rouge` — метрики качества генерации
-- `torch`, `transformers` — бэкенд BERTScore
 
 ## Образец .env
 
@@ -72,25 +68,19 @@ core/
 
 ### Ключевые компоненты
 
-**`messaging/builder.py`** — `LangchainMessageBuilder`: хранит реестр именованных шаблонов и соответствующих им `PydanticOutputParser`. `from_sequence()` — стандартная фабрика; `create_message()` рендерит `SystemMessage`, внедряя kwargs и инструкции форматирования; `get_parser()` возвращает парсер для обработки структурированного вывода.
+**`messaging/`** — слой промптов. `prompts.py` хранит все шаблоны и `PROMPT_REGISTRY`; `builder.py` (`LangchainMessageBuilder`) рендерит промпты и предоставляет `PydanticOutputParser` для структурированного разбора ответов модели.
 
-**`messaging/prompts.py`** — все строки шаблонов промптов (`RERANKING_DATA_GENERATION`, `CONTEXT_COMPRESSION_DATA_GENERATION`, `RERANKING_INFERENCE`, `CONTEXT_COMPRESSION_INFERENCE`, `JUDGE_EVALUATION`), словарь `TASK_DESCRIPTIONS` и `PROMPT_REGISTRY` — замороженный (`frozen=True`) датакласс для именованного доступа к промптам.
+**`data/synthetic.py`** — генерация датасета. `RAGDatasetAsyncGenerator` перебирает все комбинации task × domain × difficulty, конкурентно вызывает LLM и сохраняет результаты в JSON.
 
-**`data/synthetic.py`** — Pydantic-модели вывода генерации (`RAGDocument`, `RerankingSample`, `CompressionSample`, `PersistentSample`) и `DatasetDeclaration` (задачи/домены/сложности/размер батча). `RAGDatasetAsyncGenerator` управляет асинхронным циклом генерации: перебирает все комбинации task×domain×difficulty, параллельно вызывает LLM через семафор, парсит структурированный вывод и сохраняет каждый пример как UUID-именованный JSON.
+**`data/datasets.py`** — загрузка датасета. `RAGSyntheticDataset` рекурсивно читает JSON из `slm_flow_df/`, восстанавливает метаданные из структуры пути и отдаёт записи в виде `DatasetRecord`.
 
-**`data/datasets.py`** — `StandardSample` и `DatasetRecord` (единый формат строки в памяти), `BaseDataset` (ABC с `from_files`, `to_pandas`, `__len__`, `__getitem__`) и `RAGSyntheticDataset`: рекурсивно загружает JSON из `{root}/{task}/{domain}/{difficulty}/{uuid}.json`, определяет метаданные из компонентов пути, перемешивает при загрузке.
+**`tasks/rag.py`** — единица инференса. `RAGTask` принимает запрос и документы, асинхронно вызывает модель и возвращает структурированный ответ.
 
-**`tasks/rag.py`** — `RAGTask`: обёртка единицы инференса (name, query, documents). `from_record()` конструирует из `DatasetRecord`; `agenerate_prediction()` рендерит промпт через `LangchainMessageBuilder`, асинхронно вызывает модель, парсит через `PydanticOutputParser` и возвращает `"structured_output_parsing_error"` при `OutputParserException`.
+**`pipeline/runner.py`** — оркестратор эксперимента. `RAGPipelineRunner` прогоняет датасет через маршрутизатор и модели (`arun()`), затем оценивает результаты BERTScore, ROUGE и LLM-судьёй (`aevaluate()`).
 
-**`pipeline/runner.py`** — `RAGPipelineRunner`: управляет тремя клиентами `ChatOpenAI` (SLM, LLM, judge) и `LMRouter`. `arun()` итерирует датасет, маршрутизирует каждую строку, конкурентно собирает предсказания и возвращает `InferenceRecord`. `aevaluate()` оценивает записи с помощью BERTScore, ROUGE и LLM-судьи, возвращая `EvaluationRecord`. Определяет `JScore`, `InferenceRecord`, `EvaluationRecord`, `RerankingMetrics`, `CompressionMetrics`.
+**`router/`** — маршрутизация SLM/LLM. `features.py` извлекает признаки запроса через spaCy и tiktoken; `language_model_router.py` (`LMRouter`) выбирает модель по режиму; `policies.py` реализует стратегии: `WeightedRuleBasedRoutingPolicy` (правила + веса) и `SLMRoutingPolicy` (решение делегируется SLM).
 
-**`router/features.py`** — `RAGFeatureExtractor`: использует spaCy (noun chunks, леммы, косинусное сходство) и tiktoken (подсчёт токенов) для вычисления векторов признаков. Диспетчеризует к `compute_reranking_feature_vector()` или `compute_compression_feature_vector()` по имени задачи. Определяет `RAGFeatureVectorBase`, `RerankingVector`, `CompressionVector`.
-
-**`router/language_model_router.py`** — `LMRouter`: сопоставляет режим маршрутизации (`"slm"`, `"llm"`, `"dynamic"`) с выбором модели. `select_language_model()` извлекает признаки и возвращает `(fvector, route)`, где route — `"_slm"` или `"_llm"`.
-
-**`router/policies.py`** — `Routable` (структурный протокол с `call_large_model()`), `WeightedRule` (именованное пороговое правило с весом), `WeightedRuleBasedRoutingPolicy` (запускает LLM-маршрутизацию при выполнении порогов по числу и суммарному весу правил) и `SLMRoutingPolicy` (делегирует решение о маршрутизации SLM-клиенту).
-
-**`utils/additional_metrics.py`** — `SLMRoutingMetrics` и `compute_slm_routing_metrics()`: вычисляют эффективность SLM-маршрутизации (`slm_success_ratio`, `slm_routing_ratio`) из списка `EvaluationRecord` по заданному порогу jscore.
+**`utils/additional_metrics.py`** — постобработка. `compute_slm_routing_metrics()` считает `slm_success_ratio` и `slm_routing_ratio` по заданному порогу jscore.
 
 ## Режимы маршрутизации
 
