@@ -2,7 +2,6 @@
 .env
 .venv
 tests
-generated
 _tmp
 __pycache__
 pyproject.toml
