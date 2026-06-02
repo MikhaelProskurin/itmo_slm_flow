@@ -10,6 +10,7 @@ import random
 from typing import Any
 from pathlib import Path
 
+import pandas as pd
 from pandas import DataFrame
 from pydantic import BaseModel
 
@@ -17,6 +18,7 @@ from abc import ABC, abstractmethod
 from core.data.synthetic import RAGDocument
 
 TPythonMap = dict[str, Any]
+RAGBenchColumns = ["question", "documents", "response"]
 
 class StandardSample(BaseModel):
     """Canonical in-memory representation of a single RAG example (query, documents, answer)."""
@@ -120,3 +122,59 @@ class RAGSyntheticDataset(BaseDataset):
         if 0.0 < fraction <= 1.0:
             return RAGSyntheticDataset(rows=random.sample(self.rows, int(fraction * len(self))))
         raise ValueError("Fraction must be between 0.0 and 1.0 inclusive.")
+
+
+class RAGBenchDataset(BaseDataset):
+    """File-backed dataset that loads RAGBench examples from a Parquet file and shuffles them.
+
+    All records are tagged with task ``"qa"``, domain ``"tech"``, and difficulty ``"abstract"``.
+    """
+
+    def __init__(self, rows: list[DatasetRecord]) -> None:
+        self.rows = rows
+        random.shuffle(self.rows)
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, idx: int | slice) -> "DatasetRecord | RAGSyntheticDataset":
+        if isinstance(idx, slice):
+            return RAGSyntheticDataset(self.rows[idx])
+        return self.rows[idx]
+
+    def __repr__(self) -> str:
+        return f"RAGBenchDataset(rows={self.rows})"
+
+    @classmethod
+    def from_files(cls, path: str, engine: str = "pyarrow") -> "RAGBenchDataset":
+        """Load a Parquet file and return a dataset instance."""
+        dataframe = pd.read_parquet(path, columns=RAGBenchColumns, engine=engine)
+        
+        rows = []
+        for row in dataframe.iterrows():
+
+            documents = [
+                RAGDocument(idx=idx, content=d, reasoning_trace=None) 
+                for idx, d 
+                in enumerate(row[1]["documents"].tolist())
+            ]
+            sample = StandardSample(
+                query=row[1]["question"],
+                documents=documents,
+                golden_answer=row[1]["response"]
+            )
+            rows.append(
+                DatasetRecord(
+                    task="question_answering",
+                    domain="tech",
+                    difficulty="abstract",
+                    usage_metadata=None,
+                    sample=sample
+                )
+            )
+        return cls(rows)
+    
+    @property
+    def to_pandas(self) -> DataFrame:
+        """Return all rows as a Pandas DataFrame."""
+        return DataFrame([row.model_dump() for row in self.rows])

@@ -1,6 +1,7 @@
 from .datasets import (
     DatasetRecord,
-    RAGSyntheticDataset
+    RAGSyntheticDataset,
+    RAGBenchDataset
 )
 from .synthetic import (
     RAGDocument,
@@ -12,6 +13,7 @@ from .synthetic import (
 __all__ = [
     "DatasetRecord", 
     "RAGSyntheticDataset",
+    "RAGBenchDataset",
     "RAGDocument",
     "RerankingSample",
     "CompressionSample", 
