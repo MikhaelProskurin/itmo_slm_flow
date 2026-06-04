@@ -321,6 +321,7 @@ class PromptRegistry:
     evaluation: str
     reranking_inference: str
     context_compression_inference: str
+    question_answering_inference: str
     slm_as_router: str
 
     @property
