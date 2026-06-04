@@ -6,7 +6,8 @@ from pydantic import BaseModel
 from core.pipeline.runner import (
     EvaluationRecord,
     RerankingMetrics,
-    CompressionMetrics
+    CompressionMetrics,
+    QuestionAnsweringMetrics
 )
 
 
@@ -28,6 +29,9 @@ class EvaluationSummary(BaseModel):
     compression_avg_rouge_n: float
     compression_avg_compression_ratio: float
     compression_avg_jscore: float
+    question_answering_avg_jscore: float
+    question_answering_avg_bert_f1: float
+    question_answering_avg_rouge_l: float
 
 
 def compute_slm_routing_metrics(records: list[EvaluationRecord], threshold: float = 4.0) -> SLMRoutingMetrics:
@@ -63,6 +67,7 @@ def get_evaluation_summary(records: list[EvaluationRecord]) -> EvaluationSummary
     """
     _reranking = [r for r in records if isinstance(r.answer_metrics, RerankingMetrics)]
     _compression = [r for r in records if isinstance(r.answer_metrics, CompressionMetrics)]
+    _qa = [r for r in records if isinstance(r.answer_metrics, QuestionAnsweringMetrics)]
 
     average_fn = lambda values: sum(values) / len(values) if values else 0.0
 
@@ -74,5 +79,8 @@ def get_evaluation_summary(records: list[EvaluationRecord]) -> EvaluationSummary
         compression_avg_rouge_l=average_fn([r.answer_metrics.rouge_l for r in _compression]),
         compression_avg_rouge_n=average_fn([r.answer_metrics.rouge_n for r in _compression]),
         compression_avg_compression_ratio=average_fn([r.answer_metrics.compression_ratio for r in _compression]),
-        compression_avg_jscore=average_fn([r.jscore.final_score for r in _compression])
+        compression_avg_jscore=average_fn([r.jscore.final_score for r in _compression]),
+        question_answering_avg_jscore=average_fn([r.jscore.final_score for r in _qa]),
+        question_answering_avg_bert_f1=average_fn([r.answer_metrics.bert_f1 for r in _qa]),
+        question_answering_avg_rouge_l=average_fn([r.answer_metrics.rouge_l for r in _qa]),
     )
