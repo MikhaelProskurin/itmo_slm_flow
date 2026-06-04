@@ -87,7 +87,13 @@ class CompressionMetrics(BaseModel):
     compression_ratio: float
 
 
-TAnswerMetrics = RerankingMetrics | CompressionMetrics
+class QuestionAnsweringMetrics(BaseModel):
+    """Quality metrics for the question answering task."""
+
+    bert_f1: float
+    rouge_l: float
+
+TAnswerMetrics = RerankingMetrics | CompressionMetrics | QuestionAnsweringMetrics
 
 
 class RAGPipelineRunner:
@@ -235,6 +241,9 @@ class RAGPipelineRunner:
 
                 case "context_compression":
                     metrics = self._compute_context_compression_metrics(record)
+                
+                case "question_answering":
+                    metrics = self._compute_question_answerting_metrics(record)
 
                 case _:
                     raise ValueError("Unsupported metrics computation for task: %s", task)
@@ -285,20 +294,26 @@ class RAGPipelineRunner:
         return jscore
 
     @staticmethod
-    def _compute_reranking_metrics(record: InferenceRecord) -> RerankingMetrics:
+    def _get_bert_f1_score(candidate: str, reference: str) -> float:
+        """Return BERTScore F1 between a candidate and a reference string."""
+        precision, recall, f1 = score(
+            cands=[candidate], 
+            refs=[reference], 
+            lang="en", 
+            rescale_with_baseline=True, 
+            verbose=False,
+        )
+        return f1.item()
+
+    def _compute_reranking_metrics(self, record: InferenceRecord) -> RerankingMetrics:
         """Compute BERTScore F1 and exact-match for a reranking prediction."""
         candidate, reference = record.generated_answer, record.golden_answer
         hit = candidate.strip() == reference.strip()
 
-        _precision, _recall, f1 = score(
-            cands=[candidate],
-            refs=[reference],
-            lang="en",
-            rescale_with_baseline=True,
-            verbose=False,
-        )
+        f1 = self._get_bert_f1_score(candidate, reference)
+        
         return RerankingMetrics(
-            bert_f1=f1.item(),
+            bert_f1=f1,
             exact_match=hit
         )
 
@@ -306,13 +321,8 @@ class RAGPipelineRunner:
         """Compute BERTScore, ROUGE-L/2, and token compression ratio for a compression prediction."""
         candidate, reference = record.generated_answer, record.golden_answer
 
-        _precision, _recall, f1 = score(
-            cands=[candidate],
-            refs=[reference],
-            lang="en",
-            rescale_with_baseline=True,
-            verbose=False,
-        )
+        f1 = self._get_bert_f1_score(candidate, reference)
+
         rouge_score = self._rouge.get_scores(
             hyps=[candidate], refs=[reference], avg=False
         )[0]
@@ -320,8 +330,22 @@ class RAGPipelineRunner:
             len(self._evaluation_tokenizer.encode(candidate)) / record.feature_vector.total_context_token_count
         )
         return CompressionMetrics(
-            bert_f1=f1.item(),
+            bert_f1=f1,
             rouge_l=rouge_score["rouge-l"]["f"],
             rouge_n=rouge_score["rouge-2"]["f"],
             compression_ratio=compression_ratio
+        )
+    
+    def _compute_question_answerting_metrics(self, record: InferenceRecord) -> QuestionAnsweringMetrics:
+        """Compute BERTScore F1 and ROUGE-L for a question answering prediction."""
+        candidate, reference = record.generated_answer, record.golden_answer
+
+        f1 = self._get_bert_f1_score(candidate, reference)
+
+        rouge_score = self._rouge.get_scores(
+            hyps=[candidate], refs=[reference], avg=False
+        )[0]
+        return QuestionAnsweringMetrics(
+            bert_f1=f1,
+            rouge_l=rouge_score["rouge-l"]["f"]
         )

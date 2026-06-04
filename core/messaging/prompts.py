@@ -103,6 +103,22 @@ OUTPUT FORMAT:
 """
 
 
+QUESTION_ANSWERING_INFERENCE = """
+You are a question-answering assistant in a RAG pipeline. Answer the user's question using ONLY the information found in the provided documents.
+The documents may be partially or fully irrelevant. Use only the parts that actually answer the query. 
+Do not restate the question, explain your reasoning, or add meta-commentary.
+
+QUERY:
+{query}
+
+DOCUMENTS:
+{documents}
+
+OUTPUT FORMAT:
+{fmt}
+"""
+
+
 TASK_DESCRIPTIONS = {
     "reranking": (
         "The system performs RERANKING: given a user query and a set of candidate "
@@ -126,6 +142,19 @@ TASK_DESCRIPTIONS = {
         "compression. Hallucination means the compressed text introduces claims not "
         "present in the original passages."
     ),
+    "question_answering": (
+        "The system performs QUESTION ANSWERING: given a user query and a set of "
+        "retrieved context documents, it generates a direct answer to the question. "
+        "The reference answer represents the correct, complete response. "
+        "Evaluate whether the prediction answers the same question with the same "
+        "factual content. "
+        "Factual Precision: does the answer contain only claims that are supported "
+        "by the reference and the provided context? "
+        "Completeness: does the answer cover all key facts required to fully address "
+        "the query? A partial answer that omits critical information should score low. "
+        "Hallucination: did the system introduce facts, figures, or claims not present "
+        "in the reference or the source documents?"
+    )
 }
 
 
@@ -306,5 +335,6 @@ PROMPT_REGISTRY = PromptRegistry(
     evaluation=JUDGE_EVALUATION,
     reranking_inference=RERANKING_INFERENCE,
     context_compression_inference=CONTEXT_COMPRESSION_INFERENCE,
+    question_answering_inference=QUESTION_ANSWERING_INFERENCE,
     slm_as_router=SLM_AS_ROUTER
 )

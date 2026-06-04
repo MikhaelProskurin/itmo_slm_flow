@@ -36,8 +36,18 @@ class CompressionVector(RAGFeatureVectorBase):
     relevant_documents_ratio: float
 
 
-TFeatureVector = RerankingVector | CompressionVector
+class QuestionAnsweringVector(RAGFeatureVectorBase):
+    """Feature vector for question answering routing decision."""
+
+    max_lexical_overlap: float
+    relevant_documents_ratio: float
+    max_semantic_similarity: float
+    documents_count: float
+
+
+TFeatureVector = RerankingVector | CompressionVector | QuestionAnsweringVector
 TQueryFeatures = tuple[float, float, float]
+
 
 class RAGFeatureExtractor:
     """Extracts numeric feature vectors from ``RAGTask`` instances for routing policy evaluation.
@@ -77,10 +87,11 @@ class RAGFeatureExtractor:
             task: The RAG task instance to featurise.
 
         Returns:
-            A ``RerankingVector`` or ``CompressionVector`` depending on the task type.
+            A ``RerankingVector``, ``CompressionVector``, or ``QuestionAnsweringVector``
+            depending on the task type.
 
         Raises:
-            ValueError: If the task name is not ``"reranking"`` or ``"context_compression"``.
+            ValueError: If the task name is not recognised.
         """
         tname, query, documents = task.name, task.query, task.documents
         match tname:
@@ -88,6 +99,8 @@ class RAGFeatureExtractor:
                 fvector = self.compute_reranking_feature_vector(query, documents)
             case "context_compression":
                 fvector = self.compute_compression_feature_vector(query, documents)
+            case "question_answering":
+                fvector = self.compute_question_answering_feature_vector(query, documents)
             case _:
                 raise ValueError("Unsupported feature extraction for task: %s", tname)
         return fvector
@@ -124,6 +137,31 @@ class RAGFeatureExtractor:
             avg_chunk_token_count=sum(tokens_by_document) / len(tokens_by_document),
             relevant_documents_ratio=relevant_documents_count / len(documents)
         )
+
+    def compute_question_answering_feature_vector(self, query: str, documents: list[str]) -> QuestionAnsweringVector:
+        """Compute the full feature vector for a question answering task instance."""
+        query_token_count, query_noun_chunk_count, query_avg_word_frequency = self.get_query_features(query)
+        lexical_overlaps = self.get_sample_vocabulary_intersection(query, documents)
+
+        relevant_documents_count = sum(1 for overlap in lexical_overlaps if overlap >= self.RELEVANCE_THRESHOLD)
+
+        return QuestionAnsweringVector(
+            query_token_count=query_token_count,
+            query_noun_chunk_count=query_noun_chunk_count,
+            query_avg_word_frequency=query_avg_word_frequency,
+            avg_lexical_overlap=sum(lexical_overlaps) / len(lexical_overlaps),
+            max_lexical_overlap=max(lexical_overlaps),
+            relevant_documents_ratio=relevant_documents_count / len(documents),
+            max_semantic_similarity=self.get_query_to_documents_max_cosine_similarities(query, documents),
+            documents_count=len(documents)
+        )
+    
+    def get_query_to_documents_max_cosine_similarities(self, query: str, documents: list[str]) -> float:
+        """Return the maximum spaCy cosine similarity between the query and any single document."""
+        query_document: Doc = self.nlp(query)
+        serialized_documents: list[Doc] = list(self.nlp.pipe(documents, n_process=1))
+        return max(query_document.similarity(document) for document in serialized_documents)
+        
 
     def get_documents_avg_cosine_similarity(self, documents: list[str]) -> float:
         """Return the mean pairwise spaCy cosine similarity across all document pairs."""

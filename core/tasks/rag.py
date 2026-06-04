@@ -20,7 +20,14 @@ TPredictionResult = tuple["RAGTaskPrediction", UsageMetadata]
 class RAGTaskPrediction(BaseModel):
     """Structured output from a RAG inference call, holding the model's raw text prediction."""
 
-    content: str = Field(description="Model's task output: top-ranked document or compressed context.")
+    content: str = Field(
+        description=(
+            "Model's task output. Interpretation depends on task type: "
+            "for 'reranking' - the single most relevant document; "
+            "for 'context_compression' - the condensed context passage; "
+            "for 'question_answering' - the direct answer to the user query."
+        )
+    )
 
 
 class RAGTask:
